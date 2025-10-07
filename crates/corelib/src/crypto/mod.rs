@@ -6,3 +6,4 @@ pub mod blake3;
 pub mod field;
 pub mod hash;
 pub mod keccak;
+pub mod merkle;
