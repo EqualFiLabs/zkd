@@ -5,6 +5,7 @@ pub mod backend;
 pub mod config;
 pub mod crypto;
 pub mod errors;
+pub mod gadgets;
 pub mod profile;
 pub mod proof;
 pub mod registry;
