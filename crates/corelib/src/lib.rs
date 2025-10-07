@@ -1,8 +1,10 @@
 //! Core library: registry, profiles, and top-level APIs used by CLI/FFI.
 
 pub mod backend;
+pub mod config;
 pub mod errors;
 pub mod registry;
+pub mod validate;
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -41,6 +43,8 @@ pub fn list_backends() -> Vec<backend::BackendInfo> {
     registry::ensure_builtins_registered();
     registry::list_backend_infos()
 }
+
+pub use validate::validate_config;
 
 /// Version helper for CLI
 pub fn version() -> &'static str {

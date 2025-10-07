@@ -12,7 +12,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// List available backends
-    BackendLs,
+    BackendLs {
+        /// Show full capability matrix
+        #[arg(short, long)]
+        verbose: bool,
+    },
     /// List available profiles
     ProfileLs,
 }
@@ -20,9 +24,29 @@ enum Commands {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Some(Commands::BackendLs) => {
-            for b in core::list_backends() {
-                println!("{}  recursion={}", b.id, b.recursion);
+        Some(Commands::BackendLs { verbose }) => {
+            let infos = core::list_backends();
+            if !verbose {
+                for b in infos {
+                    println!("{}  recursion={}", b.id, b.recursion);
+                }
+            } else {
+                for b in infos {
+                    let caps = core::registry::get_backend_capabilities(b.id)
+                        .expect("backend disappeared");
+                    println!("{}", b.id);
+                    println!("  recursion: {}", caps.recursion);
+                    println!("  lookups: {}", caps.lookups);
+                    println!("  fields: {}", caps.fields.join(", "));
+                    println!("  hashes: {}", caps.hashes.join(", "));
+                    let arities = caps
+                        .fri_arities
+                        .iter()
+                        .map(|a| a.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    println!("  fri_arities: {}", arities);
+                }
             }
         }
         Some(Commands::ProfileLs) => {
@@ -32,7 +56,7 @@ fn main() -> Result<()> {
         }
         None => {
             println!("zkd {} — ready", core::version());
-            println!("Try: `zkd backend-ls` or `zkd profile-ls`");
+            println!("Try: `zkd backend-ls [-v]` or `zkd profile-ls`");
         }
     }
     Ok(())

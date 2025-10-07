@@ -39,6 +39,14 @@ pub fn list_backend_infos() -> Vec<BackendInfo> {
         .collect()
 }
 
+pub fn get_backend_capabilities(id: &str) -> Result<Capabilities, RegistryError> {
+    let guard = REGISTRY.read().expect("poisoned backend registry");
+    let Some(dynb) = guard.get(id) else {
+        return Err(RegistryError::BackendNotFound(id.to_string()));
+    };
+    Ok(dynb.prover.capabilities().clone())
+}
+
 pub fn get_backend(id: &str) -> Result<Arc<DynBackend>, RegistryError> {
     let guard = REGISTRY.read().expect("poisoned backend registry");
     guard
