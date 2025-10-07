@@ -180,6 +180,9 @@ pub struct Capabilities {
     pub fri_arities: Vec<u32>,
     pub recursion: RecursionMode,
     pub lookups: bool,
+    pub curves: Vec<CurveId>,     // e.g. ["jubjub","pallas"]
+    pub pedersen: bool,
+    pub keccak: bool,
 }
 ```
 
@@ -261,6 +264,17 @@ merkle_arity = 2
 }
 ```
 
+### 4.4 Commitment Binding Example
+
+```toml
+[[public.input]]
+name = "amount_commit"
+type = "Point"
+binding = "Pedersen(jubjub)"
+```
+
+This expands to two field elements `(Cx,Cy)` and enforces curve membership via the Pedersen bundle.
+
 ---
 
 ## 5. Data Serialization
@@ -272,6 +286,8 @@ merkle_arity = 2
 | PublicInputs   | Canonical JSON         | Stable key order                  |
 | Profiles       | TOML                   | Parsed, validated, cached         |
 | Events         | JSONL                  | Append-only                       |
+| Curve point    | `(Cx,Cy)` little-endian fields | For Pedersen commitments        |
+| Keccak digest  | 32-byte big-endian     | ABI-compatible with Solidity      |
 
 **Proof Header Layout (bytes):**
 
@@ -372,6 +388,8 @@ fn roundtrip_proof_verification() {
 This interface design enforces **strict determinism** and **inter-backend portability** while remaining friendly to automation (CLI + SDK + agent pipelines).
 Every call has explicit inputs, structured outputs, and reproducible serialization rules.
 By locking profiles, backends, and field types through versioned registries, proofs stay verifiable across environments and time.
+
+Commitment and privacy bindings preserve determinism: all digests are canonical and reproducible across backends. By standardizing point encodings and domain tags, proofs remain verifiable and portable across devices and chains.
 
 **Mantra:** *“Same input, same output, any backend.”*
 

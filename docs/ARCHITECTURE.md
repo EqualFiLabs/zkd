@@ -187,13 +187,14 @@ All events append to `events.jsonl` for observability.
 ```
 /src
   /air          → IR definitions
-  /bundle       → gadget registry
+  /bundles      → reusable gadgets (range, commit, arith)
   /backend
      native/
      winterfell/
      plonky2/
      plonky3/
-  /crypto       → field, FRI, hash, merkle, transcript
+  /crypto       → field, FRI, hash, merkle, keccak, poseidon, pedersen
+  /evm          → ABI + digest helpers
   /cli          → zkd command tool
 /docs
   rfc.md
@@ -224,6 +225,8 @@ Each backend compiles as an independent crate/module, imported via the registry 
 A hard separation between **AIR authoring** and **backend implementation** maximizes portability and future-proofing.
 Winterfell and Plonky families evolve rapidly; by pinning a common IR and schema-verified profiles, proofs remain reproducible even as libraries diverge.
 This modular model mirrors the UNIX philosophy: small, composable units — algebraic front-end, interchangeable engines.
+
+The cryptographic and privacy modules unify proof commitments, enabling native interoperability with EVM and deterministic hiding for private inputs without breaking cross-backend determinism.
 
 **Mantra:** *“Change the engine, keep the math.”*
 

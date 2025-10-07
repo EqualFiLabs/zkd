@@ -23,14 +23,17 @@ Every run produces a deterministic `ValidationReport` object (see § 7).
 
 ## 2. Configuration Validation
 
-| Check         | Condition                                        | Error                 | Recovery               |
-| ------------- | ------------------------------------------------ | --------------------- | ---------------------- |
-| Field Support | `field ∈ backend.capabilities.fields`            | `CapabilityMismatch`  | Abort                  |
-| Hash Support  | `hash ∈ backend.capabilities.hashes`             | `CapabilityMismatch`  | Abort                  |
-| Profile Fit   | λ(profile) ≥ λ_min                               | `WeakSecurityProfile` | Suggest higher profile |
-| FRI Arity     | profile.arity ∈ backend.capabilities.fri_arities | `InvalidFRIConfig`    | Abort                  |
-| Const Cols    | count ≤ CONST_COL_LIMIT                          | `TraceShapeError`     | Abort                  |
-| Bundle Degree | Σ(degree) ≤ MAX_DEGREE                           | `DegreeOverflow`      | Abort                  |
+| Check         | Condition                                        | Error                    | Recovery               |
+| ------------- | ------------------------------------------------ | ------------------------ | ---------------------- |
+| Field Support | `field ∈ backend.capabilities.fields`            | `CapabilityMismatch`     | Abort                  |
+| Hash Support  | `hash ∈ backend.capabilities.hashes`             | `CapabilityMismatch`     | Abort                  |
+| Profile Fit   | λ(profile) ≥ λ_min                               | `WeakSecurityProfile`    | Suggest higher profile |
+| FRI Arity     | profile.arity ∈ backend.capabilities.fri_arities | `InvalidFRIConfig`       | Abort                  |
+| Const Cols    | count ≤ CONST_COL_LIMIT                          | `TraceShapeError`        | Abort                  |
+| Bundle Degree | Σ(degree) ≤ MAX_DEGREE                           | `DegreeOverflow`         | Abort                  |
+| Curve Support | `curve ∈ backend.capabilities.curves`            | `CapabilityMismatch`     | Abort                  |
+| Pedersen Enabled | `backend.capabilities.pedersen`               | `PedersenConfigMismatch` | Abort                  |
+| Keccak Enabled | `backend.capabilities.keccak`                   | `KeccakUnavailable`      | Abort                  |
 
 Config validation always precedes compilation; failures never defer to runtime.
 
@@ -78,6 +81,9 @@ Executed during `prove()` after trace build but before FRI.
 | Merkle Commitments    | Root non-zero and unique per column set                                    | `CommitmentError`       |
 | Transcript Seed       | Non-zero hash after absorbing public inputs                                | `TranscriptError`       |
 | Proof Integrity       | Final object matches declared header length                                | `SerializationError`    |
+| Point Validity        | Pedersen point lies on selected curve                                      | `InvalidCurvePoint`     |
+| Blinding Reuse        | Same blinding `r` reused across commitments                                | `BlindingReuse`         |
+| Range Enforcement     | RangeCheck bundle fails                                                    | `RangeCheckOverflow`    |
 
 Runtime errors abort the session and emit a structured JSON log (`severity=ERROR`).
 
@@ -140,6 +146,7 @@ pub struct ValidationReport {
     pub air_passed: bool,
     pub runtime_passed: bool,
     pub verifier_passed: bool,
+    pub commit_passed: bool, // new
     pub backend_id: String,
     pub profile_id: String,
     pub issues: Vec<ValidationIssue>,
@@ -182,6 +189,11 @@ If two runs on different machines produce distinct proof hashes → `NonDetermin
 
 * Soft: `WeakSecurityProfile` → recommend “secure” profile.
 * Hard: `ConstraintUnsatisfied` → abort and dump offending rows to `/tmp/trace_err.csv`.
+* PedersenConfigMismatch → backend does not advertise pedersen=true
+* InvalidCurvePoint → curve point not on curve
+* BlindingReuse → blinding scalar reused
+* RangeCheckOverflow → value exceeds declared bit bound
+* KeccakUnavailable → backend lacks Keccak support
 
 ---
 

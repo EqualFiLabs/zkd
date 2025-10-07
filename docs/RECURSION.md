@@ -104,6 +104,8 @@ To keep layers portable and deterministic:
 * Each inner proof exposes **public outputs** (e.g., Merkle root, accumulator).
 * The recursion gadget computes a **canonical digest**:
 
+Commitment digests (Pedersen/Poseidon/Keccak) are treated identically to other public outputs when computing `Dᵢ` and chaining into `D*`.
+
 ```
 Dᵢ = H( inner_program_id || inner_backend_id || inner_profile_id || canonical(public_outputs) )
 D* = H( D₁ || D₂ || ... || Dₖ )

@@ -51,6 +51,9 @@ Provide a **universal STARK proving system** capable of:
 * Validation pipeline and `ValidationReport` emission
 * Full test suite and golden vectors
 * Docs: RFC, architecture, interfaces, validation, test-plan
+* Commitment & Privacy Gadgets: Pedersen, PoseidonCommit, KeccakCommit
+* Range-check bundle and validation coverage
+* EVM-compatible Keccak and ABI encoders
 
 ### Exit Criteria
 
@@ -65,6 +68,8 @@ Provide a **universal STARK proving system** capable of:
 ## 4. Phase 1 — Portability (Plonky2 Integration)
 
 **Objective:** Introduce Plonky2 backend and cross-backend compatibility matrix.
+
+Build upon the new crypto/commitment primitives to enable cross-backend parity with Pedersen and Keccak digests.
 
 ### Key Tasks
 

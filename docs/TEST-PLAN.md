@@ -37,19 +37,26 @@ This plan defines the **unit**, **integration**, **cross-backend**, **negative**
     algebra_*.rs
     crypto_merkle.rs
     crypto_transcript.rs
+    crypto_pedersen.rs
+    crypto_keccak.rs
     fri_*.rs
     air_ir_{parser,degree}.rs
     public_io_{encode,bind}.rs
+    gadget_range.rs
   /integration
     e2e_toy_air.rs
     e2e_merkle.rs
     e2e_running_sum.rs
+    e2e_commitment.rs
   /cross_backend
     parity_roots.rs
   /negative
     bad_config.rs
     tamper_proof.rs
     wrong_inputs.rs
+    invalid_curve.rs
+    blinding_reuse.rs
+    range_overflow.rs
   /fuzz
     transcript_roundtrip.rs
     fri_params.rs
@@ -57,6 +64,11 @@ This plan defines the **unit**, **integration**, **cross-backend**, **negative**
     program.hash
     inputs.json
     roots.json
+  /fixtures
+    pedersen.air
+    pedersen_inputs.json
+    rangecheck.air
+    keccak.air
 /scripts
   run_bench.sh
 ```
@@ -102,6 +114,12 @@ Generation rule: write once under `tests/golden_vectors/`; tests verify equality
 
   * Domain separation tags (`PROG`,`BUND`,`PUBI`).
   * Public input absorption order and deterministic seed.
+* **`crypto_pedersen.rs`**
+
+  * Tests group operations, on-curve checks, and Pedersen commitment determinism.
+* **`crypto_keccak.rs`**
+
+  * Compares Rust implementation outputs to official Keccak test vectors.
 
 ### 5.3 FRI / LDT
 
@@ -128,6 +146,10 @@ Generation rule: write once under `tests/golden_vectors/`; tests verify equality
 * **`public_io_encode.rs`**
 
   * Scalar/Vector/Bytes canonical encodings; JSON stability.
+
+### 5.6 Range Gadgets
+
+* **`gadget_range.rs`** — asserts proper enforcement of value bounds.
 
 ---
 
@@ -199,6 +221,14 @@ Failure raises `CrossBackendDrift` (see `validation.md` §11).
 
   * Non-power-of-two length → `InvalidTraceLength`.
 
+| Test                     | Expected Error           |
+| ------------------------ | ------------------------ |
+| Invalid curve point      | `InvalidCurvePoint`      |
+| Blinding reuse           | `BlindingReuse`          |
+| Range overflow           | `RangeCheckOverflow`     |
+| Backend missing pedersen | `PedersenConfigMismatch` |
+| Backend missing keccak   | `KeccakUnavailable`      |
+
 All negative tests must **abort** and log structured JSON errors per `interfaces.md`.
 
 ---
@@ -234,6 +264,10 @@ Script: `/scripts/run_bench.sh`
 | toy     | 2¹⁴  | 0.2–1.0 s              | ≤ 128 MB     |
 | merkle  | 2¹⁶  | 0.6–2.5 s              | ≤ 256 MB     |
 | runsum  | 2¹⁶  | 0.8–3.0 s              | ≤ 320 MB     |
+
+| Program  | Expected time (balanced) | Notes                                                  |
+| -------- | ------------------------ | ------------------------------------------------------ |
+| pedersen | 1–3 s                    | Includes group ops; validate mobile profile throttling |
 
 Outliers > 3× baseline → `PerformanceAnomaly` (non-fatal) recorded in `ValidationReport`.
 
@@ -287,6 +321,7 @@ Exit code must be `0`.
 Every test that performs a prove/verify must emit a `ValidationReport` to `reports/validation-*.json` and assert:
 
 * `config_passed && air_passed && runtime_passed && verifier_passed == true`
+* `commit_passed == true`
 * `issues.is_empty()` for positive tests
 * Specific codes set for negative tests (`ConstraintUnsatisfied`, `TranscriptMismatch`, etc.)
 

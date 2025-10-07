@@ -183,13 +183,20 @@ Bundle namespaces: `bundle::{name}@{hash(code)}`.
 
 ## 9. Public Inputs / Data Binding
 
-AIR defines `PublicDecl`s.
+AIR defines how user data binds into the algebraic trace.
 
-* `LiftAsConstCols`: injected as read-only CONST columns.
-* `Absorb`: hashed into transcript pre-challenge.
-  Canonical encoding (field LE or fixed bytes) shared across backends.
-  Verifier must mirror absorb order.
-  Public outputs (optional) re-computed for equivalence.
+Each `PublicDecl` can now specify a binding type:
+
+| Binding | Description | Visibility |
+| -------- | ------------ | -------- |
+| `LiftAsConstCols` | Injects a constant vector into the trace | Public |
+| `Absorb` | Hashed directly into the transcript | Public |
+| `Pedersen(curve)` | Commits to hidden value `v` with blinding `r`; AIR enforces `C = v·H + r·G` | Public (Cx,Cy) |
+| `PoseidonCommit` | Hash-based commitment for cheap hiding | Public scalar |
+| `KeccakCommit` | Keccak256-based commitment for EVM interop | Public scalar |
+
+Witness values that correspond to commitments (`v`, `r`) remain private.  
+All commitments are encoded deterministically, curve-checked, and bound to the proof transcript.
 
 ---
 
@@ -221,6 +228,14 @@ All events logged JSONL + stdout.
 * **Isolation:** Adapters sandboxed; no network I/O during prove/verify.
 * **Side Channels:** Constant-time field ops in secure profile.
 * **Versioning:** Program hash includes backend id to prevent mismatched proof reuse.
+
+### 12.1 Privacy & Commitment Security
+
+* **Hiding:** Pedersen and Poseidon commitments hide the numeric witness; `r` must be sampled fresh per commitment.
+* **Binding:** Each commitment is enforced by AIR constraints; reusing a blinding scalar triggers `BlindingReuse`.
+* **Range Checking:** Range bundles ensure committed values fall within declared bit-widths.
+* **EVM Compatibility:** `KeccakCommit` uses canonical Keccak256 encoding for digest parity with Solidity.
+* **Isolation:** All commitment gadgets execute deterministically and offline; no randomness or external I/O.
 
 ---
 
