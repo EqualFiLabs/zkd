@@ -9,6 +9,10 @@ pub struct Capabilities {
     pub fri_arities: Vec<u32>,     // e.g., [2,4,8]
     pub recursion: &'static str,   // "none" | "stark-in-stark" | "snark-wrapper"
     pub lookups: bool,
+    /// Named curves supported for Pedersen-style commitments (placeholder for now)
+    pub curves: Vec<&'static str>, // e.g., ["placeholder"]
+    /// Whether Pedersen-style commitments (and related gadgets) are supported
+    pub pedersen: bool,
 }
 
 pub trait ProverBackend: Send + Sync {

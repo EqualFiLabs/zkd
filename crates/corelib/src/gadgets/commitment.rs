@@ -61,6 +61,11 @@ impl PedersenPlaceholder {
         Self { params }
     }
 
+    /// Return the hash id used by this placeholder scheme.
+    pub fn hash_id(&self) -> &str {
+        &self.params.hash_id
+    }
+
     fn commit_raw(&self, msg: &[u8], blind: &[u8]) -> Result<[u8; 32]> {
         // H("PEDERSEN" || len(m) || m || len(r) || r)
         // Include lengths to avoid ambiguity, then domain-separated label.

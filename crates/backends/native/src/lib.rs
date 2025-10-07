@@ -22,6 +22,8 @@ impl ProverBackend for NativeBackend {
             fri_arities: vec![2, 4],
             recursion: "none",
             lookups: false,
+            curves: vec!["placeholder"],
+            pedersen: true,
         }
     }
     fn prove_stub(&self) -> Vec<u8> {

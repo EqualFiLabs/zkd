@@ -182,7 +182,8 @@ fn main() -> Result<()> {
                 "field": air.meta.field,
                 "hash": format!("{:?}", air.meta.hash).to_lowercase(),
                 "trace": { "rows": shape.rows, "cols": shape.cols, "const_cols": shape.const_cols, "periodic_cols": shape.periodic_cols },
-                "public_inputs": { "kind": "json", "binding": "raw" }
+                "public_inputs": { "kind": "json", "binding": "raw" },
+                "commitments": { "pedersen": true, "curves": ["placeholder"] }
             });
             if pretty {
                 println!("{}", serde_json::to_string_pretty(&schema)?);
