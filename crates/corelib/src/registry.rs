@@ -5,8 +5,6 @@ use std::sync::{Arc, Once, RwLock};
 use crate::backend::{BackendInfo, Capabilities, ProverBackend, VerifierBackend};
 use crate::errors::RegistryError;
 
-use zkprov_backend_native::NativeBackend;
-
 pub struct DynBackend {
     pub prover: Box<dyn ProverBackend>,
     pub verifier: Box<dyn VerifierBackend>,
@@ -64,12 +62,15 @@ pub fn ensure_builtins_registered() {
 
 fn register_native_backend() -> Result<(), RegistryError> {
     register_backend(
-        Box::new(NativeBackend::default()),
-        Box::new(NativeBackend::default()),
+        Box::new(NativeBuiltinBackend::default()),
+        Box::new(NativeBuiltinBackend::default()),
     )
 }
 
-impl ProverBackend for NativeBackend {
+#[derive(Debug, Default)]
+struct NativeBuiltinBackend;
+
+impl ProverBackend for NativeBuiltinBackend {
     fn id(&self) -> &'static str {
         "native@0.0"
     }
@@ -85,4 +86,4 @@ impl ProverBackend for NativeBackend {
     }
 }
 
-impl VerifierBackend for NativeBackend {}
+impl VerifierBackend for NativeBuiltinBackend {}

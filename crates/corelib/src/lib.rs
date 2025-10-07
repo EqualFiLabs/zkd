@@ -3,6 +3,7 @@
 pub mod backend;
 pub mod config;
 pub mod errors;
+pub mod proof;
 pub mod registry;
 pub mod validate;
 

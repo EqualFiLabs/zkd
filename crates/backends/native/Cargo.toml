@@ -5,9 +5,10 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
+anyhow = { workspace = true }
+zkprov-corelib = { path = "../../corelib" }
 
 [dev-dependencies]
-zkprov-corelib = { path = "../../corelib" }
 
 [lib]
 name = "zkprov_backend_native"
