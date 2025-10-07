@@ -10,3 +10,4 @@ once_cell = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+zkprov-backend-native = { path = "../backends/native" }

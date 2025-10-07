@@ -1,9 +1,13 @@
-//! Core library: registry stubs, profiles, and API surface for CLI/FFI.
+//! Core library: registry, profiles, and top-level APIs used by CLI/FFI.
+
+pub mod backend;
+pub mod errors;
+pub mod registry;
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
-/// Public profile info (minimal for scaffold)
+// --- Profiles (keep minimal for scaffold; full profiles land later) ---
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileInfo {
     pub id: &'static str,
@@ -27,28 +31,15 @@ static DEFAULT_PROFILES: Lazy<Vec<ProfileInfo>> = Lazy::new(|| {
     ]
 });
 
-/// Public backend info (minimal for scaffold)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BackendInfo {
-    pub id: &'static str,
-    pub recursion: bool,
-}
-
-static DEFAULT_BACKENDS: Lazy<Vec<BackendInfo>> = Lazy::new(|| {
-    vec![BackendInfo {
-        id: "native@0.0",
-        recursion: false,
-    }]
-});
-
-/// API: list available profiles
+/// Public API
 pub fn list_profiles() -> &'static [ProfileInfo] {
     DEFAULT_PROFILES.as_slice()
 }
 
-/// API: list available backends
-pub fn list_backends() -> &'static [BackendInfo] {
-    DEFAULT_BACKENDS.as_slice()
+/// Public API (registry-backed)
+pub fn list_backends() -> Vec<backend::BackendInfo> {
+    registry::ensure_builtins_registered();
+    registry::list_backend_infos()
 }
 
 /// Version helper for CLI
@@ -60,8 +51,7 @@ pub fn version() -> &'static str {
 mod tests {
     use super::*;
     #[test]
-    fn has_profiles_and_backends() {
-        assert!(!list_profiles().is_empty());
-        assert!(!list_backends().is_empty());
+    fn profiles_exist() {
+        assert_eq!(list_profiles().len(), 3);
     }
 }
