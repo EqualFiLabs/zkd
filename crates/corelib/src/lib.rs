@@ -1,11 +1,13 @@
 //! Core library: registry, profiles, and top-level APIs used by CLI/FFI.
 
+pub mod air;
 pub mod backend;
 pub mod config;
 pub mod errors;
 pub mod profile;
 pub mod proof;
 pub mod registry;
+pub mod trace;
 pub mod validate;
 
 use once_cell::sync::Lazy;

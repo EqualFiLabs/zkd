@@ -50,6 +50,9 @@ enum Commands {
     ProfileLs,
     /// Prove: read inputs JSON, produce proof blob
     Prove {
+        /// Program AIR path (.air TOML)
+        #[arg(short = 'p', long = "program")]
+        program_path: String,
         /// Inputs JSON path
         #[arg(short = 'i', long = "inputs")]
         inputs_path: String,
@@ -61,6 +64,9 @@ enum Commands {
     },
     /// Verify: read inputs JSON and proof blob, return success/failure
     Verify {
+        /// Program AIR path (.air TOML)
+        #[arg(short = 'p', long = "program")]
+        program_path: String,
         /// Inputs JSON path
         #[arg(short = 'i', long = "inputs")]
         inputs_path: String,
@@ -139,6 +145,7 @@ fn main() -> Result<()> {
             }
         }
         Some(Commands::Prove {
+            program_path,
             inputs_path,
             proof_out,
             cfg,
@@ -149,13 +156,14 @@ fn main() -> Result<()> {
             let inputs = read_to_string(&inputs_path)?;
 
             if config.backend_id == "native@0.0" {
-                let proof = native_prove(&config, &inputs)?;
+                let proof = native_prove(&config, &inputs, &program_path)?;
                 write_bytes(&proof_out, &proof)?;
                 let hdr = ProofHeader::decode(&proof[0..40])?;
                 println!(
                     "✅ ProofGenerated backend={} profile={} body_len={} pubio_hash=0x{:016x}",
                     config.backend_id, config.profile_id, hdr.body_len, hdr.pubio_hash
                 );
+                println!("Program: {}", program_path);
                 println!("Wrote: {}", proof_out);
             } else {
                 return Err(anyhow!(
@@ -165,6 +173,7 @@ fn main() -> Result<()> {
             }
         }
         Some(Commands::Verify {
+            program_path,
             inputs_path,
             proof_in,
             cfg,
@@ -176,7 +185,7 @@ fn main() -> Result<()> {
             let proof = read_to_bytes(&proof_in)?;
 
             if config.backend_id == "native@0.0" {
-                let ok = native_verify(&config, &inputs, &proof)?;
+                let ok = native_verify(&config, &inputs, &program_path, &proof)?;
                 if ok {
                     let hdr = ProofHeader::decode(&proof[0..40])?;
                     println!(
