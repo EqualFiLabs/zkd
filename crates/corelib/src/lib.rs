@@ -3,6 +3,7 @@
 pub mod backend;
 pub mod config;
 pub mod errors;
+pub mod profile;
 pub mod proof;
 pub mod registry;
 pub mod validate;
@@ -10,33 +11,24 @@ pub mod validate;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
-// --- Profiles (keep minimal for scaffold; full profiles land later) ---
+use profile::{load_all_profiles_or_default, Profile};
+
+static PROFILES: Lazy<Vec<Profile>> = Lazy::new(load_all_profiles_or_default);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileInfo {
-    pub id: &'static str,
+    pub id: String,
     pub lambda_bits: u32,
 }
 
-static DEFAULT_PROFILES: Lazy<Vec<ProfileInfo>> = Lazy::new(|| {
-    vec![
-        ProfileInfo {
-            id: "dev-fast",
-            lambda_bits: 80,
-        },
-        ProfileInfo {
-            id: "balanced",
-            lambda_bits: 100,
-        },
-        ProfileInfo {
-            id: "secure",
-            lambda_bits: 120,
-        },
-    ]
-});
-
-/// Public API
-pub fn list_profiles() -> &'static [ProfileInfo] {
-    DEFAULT_PROFILES.as_slice()
+pub fn list_profiles() -> Vec<ProfileInfo> {
+    PROFILES
+        .iter()
+        .map(|p| ProfileInfo {
+            id: p.id.clone(),
+            lambda_bits: p.lambda_bits,
+        })
+        .collect()
 }
 
 /// Public API (registry-backed)
@@ -57,6 +49,6 @@ mod tests {
     use super::*;
     #[test]
     fn profiles_exist() {
-        assert_eq!(list_profiles().len(), 3);
+        assert!(list_profiles().len() >= 3);
     }
 }

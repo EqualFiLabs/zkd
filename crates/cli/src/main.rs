@@ -129,7 +129,8 @@ fn main() -> Result<()> {
             }
         }
         Some(Commands::ProfileLs) => {
-            for p in core::list_profiles() {
+            let profiles = core::list_profiles();
+            for p in profiles {
                 println!("{}  λ={} bits", p.id, p.lambda_bits);
             }
         }
