@@ -2,12 +2,17 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Args, Parser, Subcommand};
 use std::fs;
 use std::path::Path;
+use std::process;
 use zkprov_backend_native::{native_prove, native_verify};
 use zkprov_corelib as core;
+use zkprov_corelib::air::AirProgram;
 use zkprov_corelib::config::Config;
 use zkprov_corelib::proof::ProofHeader;
 use zkprov_corelib::registry;
+use zkprov_corelib::trace::TraceShape;
 use zkprov_corelib::validate::validate_config;
+
+const EXIT_CORRUPT_PROOF: i32 = 4;
 
 #[derive(Parser)]
 #[command(name = "zkd", version, about = "ZKProv CLI")]
@@ -48,6 +53,15 @@ enum Commands {
     },
     /// List available profiles
     ProfileLs,
+    /// Print the public I/O schema derived from the program AIR
+    IoSchema {
+        /// Program AIR path (.air TOML)
+        #[arg(short = 'p', long = "program")]
+        program_path: String,
+        /// Emit JSON (default) or pretty JSON
+        #[arg(long = "pretty", default_value_t = false)]
+        pretty: bool,
+    },
     /// Prove: read inputs JSON, produce proof blob
     Prove {
         /// Program AIR path (.air TOML)
@@ -59,6 +73,9 @@ enum Commands {
         /// Output proof file path
         #[arg(short = 'o', long = "output")]
         proof_out: String,
+        /// Print stats row/col/body_len after success
+        #[arg(long = "stats", default_value_t = false)]
+        stats: bool,
         #[command(flatten)]
         cfg: CommonCfg,
     },
@@ -73,6 +90,9 @@ enum Commands {
         /// Proof file path
         #[arg(short = 'P', long = "proof")]
         proof_in: String,
+        /// Print stats row/col/body_len after success
+        #[arg(long = "stats", default_value_t = false)]
+        stats: bool,
         #[command(flatten)]
         cfg: CommonCfg,
     },
@@ -110,6 +130,12 @@ fn mk_config(c: &CommonCfg) -> Config {
     )
 }
 
+/// Map verifier/proof parsing failures to the mandated exit code (4).
+fn exit_for_corrupt_proof(err: &anyhow::Error) -> ! {
+    eprintln!("Error: {err}");
+    process::exit(EXIT_CORRUPT_PROOF);
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -144,10 +170,31 @@ fn main() -> Result<()> {
                 println!("{}  λ={} bits", p.id, p.lambda_bits);
             }
         }
+        Some(Commands::IoSchema {
+            program_path,
+            pretty,
+        }) => {
+            let air = AirProgram::load_from_file(&program_path)?;
+            let shape = TraceShape::from_air(&air);
+            // Minimal schema reflection for Phase-0 (public inputs remain free-form JSON)
+            let schema = serde_json::json!({
+                "program": air.meta.name,
+                "field": air.meta.field,
+                "hash": format!("{:?}", air.meta.hash).to_lowercase(),
+                "trace": { "rows": shape.rows, "cols": shape.cols, "const_cols": shape.const_cols, "periodic_cols": shape.periodic_cols },
+                "public_inputs": { "kind": "json", "binding": "raw" }
+            });
+            if pretty {
+                println!("{}", serde_json::to_string_pretty(&schema)?);
+            } else {
+                println!("{}", serde_json::to_string(&schema)?);
+            }
+        }
         Some(Commands::Prove {
             program_path,
             inputs_path,
             proof_out,
+            stats,
             cfg,
         }) => {
             registry::ensure_builtins_registered();
@@ -158,11 +205,20 @@ fn main() -> Result<()> {
             if config.backend_id == "native@0.0" {
                 let proof = native_prove(&config, &inputs, &program_path)?;
                 write_bytes(&proof_out, &proof)?;
-                let hdr = ProofHeader::decode(&proof[0..40])?;
+                let hdr = ProofHeader::decode(&proof[0..40])
+                    .unwrap_or_else(|e| exit_for_corrupt_proof(&e.into()));
                 println!(
                     "✅ ProofGenerated backend={} profile={} body_len={} pubio_hash=0x{:016x}",
                     config.backend_id, config.profile_id, hdr.body_len, hdr.pubio_hash
                 );
+                if stats {
+                    let air = AirProgram::load_from_file(&program_path)?;
+                    let shape = TraceShape::from_air(&air);
+                    println!(
+                        "stats rows={} cols={} const={} periodic={}",
+                        shape.rows, shape.cols, shape.const_cols, shape.periodic_cols
+                    );
+                }
                 println!("Program: {}", program_path);
                 println!("Wrote: {}", proof_out);
             } else {
@@ -176,6 +232,7 @@ fn main() -> Result<()> {
             program_path,
             inputs_path,
             proof_in,
+            stats,
             cfg,
         }) => {
             registry::ensure_builtins_registered();
@@ -185,16 +242,35 @@ fn main() -> Result<()> {
             let proof = read_to_bytes(&proof_in)?;
 
             if config.backend_id == "native@0.0" {
-                let ok = native_verify(&config, &inputs, &program_path, &proof)?;
-                if ok {
-                    let hdr = ProofHeader::decode(&proof[0..40])?;
-                    println!(
-                        "✅ ProofVerified backend={} profile={} pubio_hash=0x{:016x}",
-                        config.backend_id, config.profile_id, hdr.pubio_hash
-                    );
-                } else {
-                    println!("❌ Verification failed");
-                    std::process::exit(1);
+                // First, attempt to decode header; any failure maps to exit code 4
+                let hdr = match ProofHeader::decode(proof.get(0..40).unwrap_or(&[])) {
+                    Ok(h) => h,
+                    Err(e) => exit_for_corrupt_proof(&e.into()),
+                };
+                // Now run backend verify; any transcript/commit mismatch is also "corrupt proof"
+                match native_verify(&config, &inputs, &program_path, &proof) {
+                    Ok(true) => {
+                        println!(
+                            "✅ ProofVerified backend={} profile={} pubio_hash=0x{:016x}",
+                            config.backend_id, config.profile_id, hdr.pubio_hash
+                        );
+                        if stats {
+                            let air = AirProgram::load_from_file(&program_path)?;
+                            let shape = TraceShape::from_air(&air);
+                            println!(
+                                "stats rows={} cols={} const={} periodic={}",
+                                shape.rows, shape.cols, shape.const_cols, shape.periodic_cols
+                            );
+                        }
+                    }
+                    Ok(false) => {
+                        eprintln!("❌ Verification failed");
+                        process::exit(EXIT_CORRUPT_PROOF);
+                    }
+                    Err(e) => {
+                        // Treat mismatches and root/header problems as "corrupt proof"
+                        exit_for_corrupt_proof(&e);
+                    }
                 }
             } else {
                 return Err(anyhow!(
@@ -205,8 +281,13 @@ fn main() -> Result<()> {
         }
         None => {
             println!("zkd {} — ready", core::version());
+            println!("Try: `zkd backend-ls [-v]`, `zkd profile-ls`,");
+            println!("     `zkd io-schema -p <program.air>`,",);
             println!(
-                "Try: `zkd backend-ls [-v]`, `zkd profile-ls`, `zkd prove ... --profile ...`, or `zkd verify ... --profile ...`"
+                "     `zkd prove -p <program> -i <inputs> -o <proof> --profile ... [--stats]`,",
+            );
+            println!(
+                "     `zkd verify -p <program> -i <inputs> -P <proof> --profile ... [--stats]`",
             );
         }
     }
