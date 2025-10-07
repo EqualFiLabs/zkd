@@ -1,7 +1,8 @@
-//! Native backend adapter with AIR-aware stub proving.
+//! Native backend adapter with AIR-aware stub proving and hash selection.
 
 use zkprov_corelib::air::AirProgram;
 use zkprov_corelib::backend::{Capabilities, ProverBackend, VerifierBackend};
+use zkprov_corelib::crypto::registry::hash64_by_id;
 use zkprov_corelib::errors::RegistryError;
 use zkprov_corelib::registry::register_backend;
 use zkprov_corelib::trace::TraceShape;
@@ -17,7 +18,7 @@ impl ProverBackend for NativeBackend {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             fields: vec!["Prime254"],
-            hashes: vec!["blake3"],
+            hashes: vec!["blake3", "keccak256", "poseidon2", "rescue"],
             fri_arities: vec![2, 4],
             recursion: "none",
             lookups: false,
@@ -37,28 +38,25 @@ pub fn register_native_backend() -> Result<(), RegistryError> {
     register_backend(Box::new(NativeBackend), Box::new(NativeBackend))
 }
 
-/// Deterministic root over AIR+Trace+Inputs (64-bit)
-fn fake_trace_root_u64(air: &AirProgram, inputs_json: &str) -> u64 {
+/// Deterministic root over AIR+Trace+Inputs using selected hash (64-bit).
+fn fake_trace_root_u64(air: &AirProgram, inputs_json: &str, hash_id: &str) -> anyhow::Result<u64> {
     // Mix in salient fields; order matters (stable).
     let mut accum = 0u64;
-    let mix = |acc: &mut u64, label: &str, bytes: &[u8]| {
-        let h = proof::hash64(label, bytes);
+    let mix = |acc: &mut u64, label: &str, bytes: &[u8]| -> anyhow::Result<()> {
+        let h = hash64_by_id(hash_id, label, bytes)
+            .ok_or_else(|| anyhow::anyhow!("unsupported hash id '{}'", hash_id))?;
         *acc ^= h.rotate_left(13) ^ h.wrapping_mul(0x9e3779b97f4a7c15);
+        Ok(())
     };
     let shape = TraceShape::from_air(air);
 
-    mix(&mut accum, "AIR.NAME", air.meta.name.as_bytes());
-    mix(&mut accum, "AIR.FIELD", air.meta.field.as_bytes());
-    mix(
-        &mut accum,
-        "AIR.HASH",
-        format!("{:?}", air.meta.hash).as_bytes(),
-    );
-    mix(&mut accum, "TRACE.ROWS", &shape.rows.to_le_bytes());
-    mix(&mut accum, "TRACE.COLS", &shape.cols.to_le_bytes());
-    mix(&mut accum, "IO.JSON", inputs_json.as_bytes());
+    mix(&mut accum, "AIR.NAME", air.meta.name.as_bytes())?;
+    mix(&mut accum, "AIR.FIELD", air.meta.field.as_bytes())?;
+    mix(&mut accum, "TRACE.ROWS", &shape.rows.to_le_bytes())?;
+    mix(&mut accum, "TRACE.COLS", &shape.cols.to_le_bytes())?;
+    mix(&mut accum, "IO.JSON", inputs_json.as_bytes())?;
 
-    accum
+    Ok(accum)
 }
 
 /// Prove: AIR-aware deterministic proof.
@@ -78,8 +76,8 @@ pub fn native_prove(
     let profile_id_hash = proof::hash64("PROFILE", config.profile_id.as_bytes());
     let pubio_hash = proof::hash64("PUBIO", public_inputs_json.as_bytes());
 
-    // Body = fake trace root as 8 bytes
-    let root = fake_trace_root_u64(&air, public_inputs_json);
+    // Body = fake trace root as 8 bytes, using user-selected hash
+    let root = fake_trace_root_u64(&air, public_inputs_json, &config.hash)?;
     let body = root.to_le_bytes();
 
     let header = proof::ProofHeader {
@@ -127,8 +125,8 @@ pub fn native_verify(
         anyhow::bail!("public io hash mismatch");
     }
 
-    // Check fake root
-    let expect_root = fake_trace_root_u64(&air, public_inputs_json).to_le_bytes();
+    // Check fake root derived from selected hash
+    let expect_root = fake_trace_root_u64(&air, public_inputs_json, &config.hash)?.to_le_bytes();
     if body != expect_root {
         anyhow::bail!("fake trace root mismatch");
     }

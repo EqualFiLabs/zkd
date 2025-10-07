@@ -78,7 +78,7 @@ impl ProverBackend for NativeBuiltinBackend {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             fields: vec!["Prime254"],
-            hashes: vec!["blake3"],
+            hashes: vec!["blake3", "keccak256", "poseidon2", "rescue"],
             fri_arities: vec![2, 4],
             recursion: "none",
             lookups: false,
