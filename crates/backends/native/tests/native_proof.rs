@@ -19,13 +19,28 @@ fn prove_verify_with_air() {
 
 #[test]
 fn verify_fails_on_different_air() {
-    // Create a small temp AIR by tweaking the program name → different fake root
+    // Create a small temp AIR by tweaking rows_hint → different fake root
     let tmp = tempfile::NamedTempFile::new().unwrap();
-    let mut base = std::fs::read_to_string(AIR).unwrap();
-    base = base.replace("name = \"toy_merkle\"", "name = \"toy_merkle_alt\"");
-    std::fs::write(tmp.path(), &base).unwrap();
-    let alt_air = zkprov_corelib::air::AirProgram::load_from_file(tmp.path()).unwrap();
-    assert_eq!(alt_air.meta.name, "toy_merkle_alt");
+    std::fs::write(
+        tmp.path(),
+        r#"rows_hint = 32768
+
+[meta]
+name = "toy_merkle"
+field = "Prime254"
+hash = "blake3"
+
+[columns]
+trace_cols = 4
+const_cols = 1
+periodic_cols = 1
+
+[constraints]
+transition_count = 3
+boundary_count = 2
+"#,
+    )
+    .unwrap();
 
     let cfg = Config::new("native@0.0", "Prime254", "blake3", 2, false, "balanced");
     let inputs = r#"{"a":1}"#;
