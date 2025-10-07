@@ -3,6 +3,7 @@
 pub mod air;
 pub mod backend;
 pub mod config;
+pub mod crypto;
 pub mod errors;
 pub mod profile;
 pub mod proof;

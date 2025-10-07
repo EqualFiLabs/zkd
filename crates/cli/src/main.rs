@@ -206,7 +206,7 @@ fn main() -> Result<()> {
                 let proof = native_prove(&config, &inputs, &program_path)?;
                 write_bytes(&proof_out, &proof)?;
                 let hdr = ProofHeader::decode(&proof[0..40])
-                    .unwrap_or_else(|e| exit_for_corrupt_proof(&e.into()));
+                    .unwrap_or_else(|e| exit_for_corrupt_proof(&e));
                 println!(
                     "✅ ProofGenerated backend={} profile={} body_len={} pubio_hash=0x{:016x}",
                     config.backend_id, config.profile_id, hdr.body_len, hdr.pubio_hash
@@ -245,7 +245,7 @@ fn main() -> Result<()> {
                 // First, attempt to decode header; any failure maps to exit code 4
                 let hdr = match ProofHeader::decode(proof.get(0..40).unwrap_or(&[])) {
                     Ok(h) => h,
-                    Err(e) => exit_for_corrupt_proof(&e.into()),
+                    Err(e) => exit_for_corrupt_proof(&e),
                 };
                 // Now run backend verify; any transcript/commit mismatch is also "corrupt proof"
                 match native_verify(&config, &inputs, &program_path, &proof) {
