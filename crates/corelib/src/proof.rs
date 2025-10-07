@@ -1,9 +1,17 @@
 //! Deterministic proof header + body format and helpers.
 
+use std::convert::TryInto;
+
 use anyhow::{bail, Result};
-use blake3::Hasher;
 use serde::{Deserialize, Serialize};
 
+// Centralized header hashing policy.
+// For Phase-0, we keep BLAKE3 for stability. If policy changes, switch here.
+pub const HEADER_HASH_ID: &str = "blake3";
+
+use crate::crypto::registry;
+
+/// Magic/version
 pub const MAGIC: [u8; 4] = *b"PROF";
 pub const VERSION: u32 = 1;
 
@@ -42,29 +50,14 @@ impl ProofHeader {
         if bytes[0..4] != MAGIC {
             bail!("bad magic");
         }
-
-        let mut ver_bytes = [0u8; 4];
-        ver_bytes.copy_from_slice(&bytes[4..8]);
-        let ver = u32::from_le_bytes(ver_bytes);
+        let ver = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
         if ver != VERSION {
             bail!("unsupported proof version {ver}");
         }
-
-        let mut backend_bytes = [0u8; 8];
-        backend_bytes.copy_from_slice(&bytes[8..16]);
-        let backend_id_hash = u64::from_le_bytes(backend_bytes);
-
-        let mut profile_bytes = [0u8; 8];
-        profile_bytes.copy_from_slice(&bytes[16..24]);
-        let profile_id_hash = u64::from_le_bytes(profile_bytes);
-
-        let mut pubio_bytes = [0u8; 8];
-        pubio_bytes.copy_from_slice(&bytes[24..32]);
-        let pubio_hash = u64::from_le_bytes(pubio_bytes);
-
-        let mut body_len_bytes = [0u8; 8];
-        body_len_bytes.copy_from_slice(&bytes[32..40]);
-        let body_len = u64::from_le_bytes(body_len_bytes);
+        let backend_id_hash = u64::from_le_bytes(bytes[8..16].try_into().unwrap());
+        let profile_id_hash = u64::from_le_bytes(bytes[16..24].try_into().unwrap());
+        let pubio_hash = u64::from_le_bytes(bytes[24..32].try_into().unwrap());
+        let body_len = u64::from_le_bytes(bytes[32..40].try_into().unwrap());
 
         Ok(ProofHeader {
             backend_id_hash,
@@ -75,14 +68,10 @@ impl ProofHeader {
     }
 }
 
-/// Deterministic 64-bit hash helpers (BLAKE3 truncated).
+/// Header hashing helper (64-bit), using the centralized policy.
+/// Currently equivalent to BLAKE3(label || data), truncated to 64 bits LE.
 pub fn hash64(label: &str, data: &[u8]) -> u64 {
-    let mut h = Hasher::new();
-    h.update(label.as_bytes());
-    h.update(data);
-    let mut out8 = [0u8; 8];
-    out8.copy_from_slice(&h.finalize().as_bytes()[0..8]);
-    u64::from_le_bytes(out8)
+    registry::hash64_by_id(HEADER_HASH_ID, label, data).expect("HEADER_HASH_ID must be supported")
 }
 
 /// Encode full proof: header(40) + body
