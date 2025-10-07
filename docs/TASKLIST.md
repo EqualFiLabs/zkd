@@ -1,303 +1,427 @@
+Here’s a **fully regenerated `TASKLIST.md`** that bakes in the new crypto primitives, privacy gadgets (Pedersen, range, arithmetic under commitments), and EVM interop (Keccak + ABI + Solidity stub), and carries through all phases to a finished v1.0 with docs, SDKs, GPU, recursion, registry, and security review. It keeps your “micro-task + DoD + files” structure and is consistent with the rest of the spec suite.
+
+---
+
 # Tasklist — General-Purpose STARK Prover
 
-**Parent RFC:** RFC-ZK01 v0.2  
+**Parent RFC:** RFC-ZK01 v0.3 (post-commitment update)
 **Status:** Living document (update as tasks close)
+**Goal:** Deliver a deterministic, multi-backend STARK prover with commitments, privacy gadgets, and EVM interop; ship as CLI + library + service with SDKs and docs.
 
 ---
 
-## Phase 0 — Foundation (MVP)
+## Phase 0 — Foundation (MVP + Commitments)
 
-> Goal: deliver a working, deterministic prover with CLI + SDK and baseline backends.
+> Goal: ship a working deterministic prover with CLI/SDK, baseline backends, **crypto primitives**, **privacy gadgets**, and **EVM interop**.
+> Exit: CI green (coverage ≥80%), deterministic proofs, commitment tests pass, Solidity digest parity passes.
 
-### Task 1.1 — Repository Scaffold & Base Tooling
-- Objective: initialize reproducible repo with Rust core + C ABI + docs.
-- Files: `/Cargo.toml`, `/src/main.rs`, `/src/lib.rs`, `/crates/corelib/`, `/crates/ffi-c/`, `/docs/`, `/scripts/`, `/.gitignore`, `/.editorconfig`, `/.github/workflows/ci.yml`
-- Steps: init repo, add workspace crates, dependencies (`serde`, `serde_json`, `thiserror`, `clap`, `rayon`, `blake3`), configure CI, add editorconfig/license/README, dummy proof main.
-- DoD: repo builds/tests pass; CI succeeds; README includes Quickstart & layout.
+### Task 0.1 — Repository Scaffold & Base Tooling
 
-### Task 1.2 — Backend Registry & Core Prover Interface
-- Objective: implement trait system for adapters (native, Winterfell, Plonky2/3).
-- Files: `/crates/corelib/src/backend.rs`, `/crates/corelib/src/registry.rs`, `/crates/corelib/src/errors.rs`
-- Steps: define `ProverBackend`/`VerifierBackend`, registry lookup, capability struct, errors, unit tests.
-- DoD: `cargo test -- corelib` passes; registry lists backends.
+* **Objective:** initialize reproducible repo with Rust workspace, core lib, CLI, docs.
+* **Files:** `/Cargo.toml`, `/src/main.rs`, `/src/lib.rs`, `/crates/corelib/`, `/docs/`, `/scripts/`, `/.gitignore`, `/.editorconfig`, `/.gitattributes`, `/.github/workflows/ci.yml`, `/LICENSE`, `/README.md`
+* **Steps:** init workspace; add deps (`serde`, `serde_json`, `thiserror`, `clap`, `rayon`, `blake3`); editorconfig; license; README; dummy CLI.
+* **DoD:** `cargo build` & `cargo test` green locally and in CI; README Quickstart present.
 
-### Task 1.3 — Proof Profile System (Performance Tuning)
-- Objective: parse `.toml` profiles controlling λ, FRI, memory.
-- Files: `/crates/corelib/src/profile.rs`, `/profiles/{dev-fast.toml,balanced.toml,secure.toml,rec-mobile-fast.toml}`
-- Steps: define `Profile` struct, implement load/validation, provide defaults, tests.
-- DoD: profiles load/validate; CLI lists metadata.
+### Task 0.2 — Backend Registry & Core Prover Interface
 
-### Task 1.4 — Native Reference Backend
-- Objective: deterministic STARK-like backend for testing.
-- Files: `/crates/backends/native/src/lib.rs`
-- Steps: implement hash, simulate AIR compile/FRI, deterministic digest, register backend.
-- DoD: `zkd prove -b native` deterministic; verify passes.
+* **Objective:** trait system for adapters + registry.
+* **Files:** `/crates/corelib/src/{backend.rs,registry.rs,errors.rs}`
+* **Steps:** define `ProverBackend`/`VerifierBackend`, `Capabilities`, registry; unit tests.
+* **DoD:** `cargo test -p corelib` passes; `list_backends()` returns `native` at minimum.
 
-### Task 1.5 — CLI Tooling & Proof File Format
-- Objective: build `zkd` CLI commands.
-- Files: `/src/main.rs`, `/crates/corelib/src/cli.rs`, `/crates/corelib/src/proof.rs`
-- Steps: define proof header + serialization, implement CLI prove/verify/backends/profiles, add stats, integration tests.
-- DoD: CLI works with native backend; proof headers validated.
+### Task 0.3 — Proof Profile System (Performance Tuning)
 
-### Task 1.6 — Plonky2 Adapter
-- Objective: bridge core API to Plonky2 recursion.
-- Files: `/crates/backends/plonky2/src/lib.rs`
-- Steps: add feature flag, implement adapter, map profile config, recursion capability, validate on toy AIR.
-- DoD: Plonky2 backend functional; digest parity check passes.
+* **Objective:** parse TOML profiles controlling λ/FRI/memory.
+* **Files:** `/crates/corelib/src/profile.rs`, `/profiles/{dev-fast.toml,balanced.toml,secure.toml}`
+* **Steps:** struct + loader + validation; defaults; tests.
+* **DoD:** `zkd profile ls` lists profiles; invalid profile rejected.
 
-### Task 1.7 — Plonky3 Adapter (Preferred Long-Term)
-- Objective: integrate Plonky3 with recursion APIs.
-- Files: `/crates/backends/plonky3/src/lib.rs`
-- Steps: mirror Plonky2 adapter, efficient FRI mapping, recursion tests, compare perf in `bench_results.csv`.
-- DoD: benches show comparable λ & digests.
+### Task 0.4 — Native Reference Backend
 
-### Task 1.8 — Recursion IR & Aggregator AIR
-- Objective: implement recursion IR and aggregation template.
-- Files: `/crates/corelib/src/recursion.rs`, `/tests/recursion_agg.rs`
-- Steps: define `RecursionSpec`, digest rule, CLI `--inner` hook, unit tests for mismatches/limits.
-- DoD: aggregation works; validation errors emit codes.
+* **Objective:** deterministic reference backend for tests.
+* **Files:** `/crates/backends/native/src/lib.rs`
+* **Steps:** stub AIR compile, deterministic transcript, FRI sim, proof blob; registry register.
+* **DoD:** `zkd prove -b native` works; `zkd verify` passes; stats emitted.
 
-### Task 1.9 — C ABI Bindings
-- Objective: export stable mobile/desktop FFI.
-- Files: `/crates/ffi-c/src/lib.rs`, `/include/zkprov.h`
-- Steps: implement 6 C ABI functions, map errors, expose alloc helpers, C harness validation.
-- DoD: header compiles (`clang -Wall`); C example verifies proof.
+### Task 0.5 — CLI Tooling & Proof File Format
 
-### Task 1.10 — Dart FFI Plugin
-- Objective: Flutter integration.
-- Files: `/bindings/flutter_plugin/lib/zkprov_ffi.dart`, `/android/src/main/jniLibs/arm64-v8a/libzkprov.so`, `/ios/ZkProv.xcframework/`
-- Steps: build plugin skeleton, implement bindings, sample UI, CI builds for Android/iOS.
-- DoD: app verifies proofs; CI builds succeed.
+* **Objective:** `zkd` subcommands + binary proof format.
+* **Files:** `/src/main.rs`, `/crates/corelib/src/{cli.rs,proof.rs}`
+* **Steps:** implement `prove/verify/backend ls/profile ls/io schema`; stats flag; proof header parser.
+* **DoD:** CLI integration tests pass; corrupted proof yields exit code 4.
 
-### Task 1.11 — Validation & Report System
-- Objective: structured JSON validation reports.
-- Files: `/crates/corelib/src/validation.rs`, `/reports/`
-- Steps: define `ValidationReport`, add checks, emit report files, failure-path tests.
-- DoD: tests pass; invalid inputs report errors; benchmarks output CSV.
+### Task 0.6 — **Core Crypto Primitives Library**
 
-### Task 1.12 — Threat Model & Security Checks
-- Objective: formalize threats and protections.
-- Files: `/docs/threat-model.md`, `/crates/corelib/src/security.rs`
-- Steps: enumerate risks, add proof checksum/integrity, version binding, tamper tests.
-- DoD: tampering fails verification; threat model doc complete.
+* **Objective:** reusable primitives: Poseidon2, Rescue, Merkle(arity 2/4), Keccak256, hash-to-field.
+* **Files:** `/crates/corelib/src/crypto/{poseidon.rs,rescue.rs,merkle.rs,keccak.rs,hash_to_field.rs}`, `/tests/crypto_primitives.rs`
+* **Steps:** implement permutations; Keccak vectors; deterministic hash-to-field; merkle helpers.
+* **DoD:** test vectors pass; `zkd io schema` reflects selected hash; merkle parity tests green.
 
-### Task 1.13 — Runbook & Deployment Scripts
-- Objective: codify build/bench steps.
-- Files: `/docs/runbook.md`, `/scripts/build.sh`, `/scripts/run_bench.sh`
-- Steps: automate release build, bench script writing CSV, deployment notes.
-- DoD: scripts run unattended; bench outputs expected range.
+### Task 0.7 — **Privacy Gadget Bundles (v1)**
 
-### Task 1.14 — Roadmap & Retrospective
-- Objective: summarize Phase 0 & plan next.
-- Files: `/docs/roadmap.md`, `/docs/retrospective.md`
-- Steps: document wins/gaps, list Phase 1 extensions, update milestones.
-- DoD: roadmap published; retrospective linked to RFC.
+* **Objective:** Pedersen commitments + range checks + arithmetic under commitments.
+* **Files:** `/crates/bundles/{pedersen.rs,range.rs,arith.rs}`, `/crates/corelib/src/air/bindings.rs`, `/tests/privacy_gadgets.rs`
+* **Steps:** extend `Capabilities` with `curves`, `pedersen`; implement `PedersenCommit(Cx,Cy)`, `RangeCheck(v,k)`, `AddUnderCommit`; validators for point validity and r-reuse.
+* **DoD:** positive tests pass on `native`; negative tests emit `InvalidCurvePoint`, `BlindingReuse`, `RangeCheckOverflow`.
 
----
+### Task 0.8 — **EVM Interop & ABI Helpers**
 
-## Phase 1 — Portability (Plonky2 + cross-backend parity)
+* **Objective:** Keccak commitments and digest parity with Solidity verifier stub.
+* **Files:** `/crates/corelib/src/evm/{abi.rs,digest.rs}`, `/tests/evm_interop.rs`, `/examples/evm_verifier/contracts/VerifierStub.sol`, `/examples/evm_verifier/foundry.toml`
+* **Steps:** ABI encoders for inputs/proof meta; KeccakCommit binding; Foundry project with `VerifierStub` that recomputes public-output digest `D`; parity tests.
+* **DoD:** Solidity stub verifies `D` from a native proof; Keccak vectors pass; ABI round-trip equality.
 
-> Goal: add Plonky2 backend, enable recursion, enforce parity across native/Winterfell/Plonky2.
+### Task 0.9.0 — C ABI Bindings (Desktop + Mobile)
+- **Objective:** export a stable C API for embedding (desktop + mobile), exposing proof and verification entry points.
+- **Files:** `/crates/ffi-c/src/lib.rs`, `/include/zkprov.h`, `/tests/ffi_roundtrip.c`
+- **Steps:**
+  1. Expose six extern "C" functions: `zkp_init`, `zkp_prove`, `zkp_verify`, `zkp_list_backends`, `zkp_list_profiles`, and `zkp_free`.
+  2. Map Rust errors to numeric return codes and structured JSON strings.
+  3. Provide allocation helpers (`zkp_alloc`, `zkp_free`) for safe interop.
+  4. Compile and link against Rust corelib; produce shared library `libzkprov.so` (Linux/Android) and `libzkprov.dylib` (macOS).
+  5. Write a small C harness verifying a toy proof via FFI.
+- **DoD:** header compiles with `clang -Wall`; C example verifies proof and prints deterministic digest D; FFI library builds on CI.
 
-### Task 2.1 — Capabilities Matrix & Validator (extended)
-- Objective: enforce backend/field/hash/arity compatibility.
-- Files: `/crates/corelib/src/capabilities.rs`, `/backends/*.json`, `/crates/corelib/tests/cap_matrix.rs`
-- Steps: extend `Capabilities`, load JSON per backend, implement `validate_config`.
-- DoD: invalid combos rejected with precise error; unit tests cover ≥6 cases.
+### Task 0.9.1 — Dart FFI Plugin (Flutter)
+- **Objective:** publish Flutter plugin wrapping the C ABI.
+- **Files:** `/bindings/flutter_plugin/lib/zkprov_ffi.dart`, `/android/src/main/jniLibs/arm64-v8a/libzkprov.so`, `/ios/ZkProv.xcframework/`
+- **Steps:** implement Dart bindings; add sample UI; automate builds for Android/iOS.
+- **DoD:** Flutter demo app proves/verifies locally; CI builds plugin successfully.
 
-### Task 2.2 — AIR-IR → Backend Lowering Hooks
-- Objective: provide lowering passes for adapters.
-- Files: `/crates/corelib/src/air/lowering.rs`, `/crates/corelib/tests/air_lowering.rs`
-- Steps: define `LoweredProgram`, implement `AirIR::lower`, property tests on sample AIRs.
-- DoD: lowering stable across runs; no panics on degenerate inputs.
 
-### Task 2.3 — Plonky2 Adapter: Basic Prove/Verify
-- Objective: implement Plonky2 prove/verify.
-- Files: `/crates/backends/plonky2/src/lib.rs`, `/crates/backends/plonky2/Cargo.toml`
-- Steps: map profile to Plonky2 config, convert lowered program, wrap proof serialization.
-- DoD: `zkd prove -b plonky2` works on toy AIR; digest `D` matches native/WF.
+### Task 0.9.2 — AIR-IR Parser & Public I/O (commitment aware)
 
-### Task 2.4 — Plonky2 Recursion Gadget (outer)
-- Objective: support STARK-in-STARK recursion.
-- Files: `/crates/backends/plonky2/src/recursion.rs`, `/tests/recursion_plonky2.rs`
-- Steps: implement verification constraints, CLI `--inner` path, bench small aggregation.
-- DoD: aggregation proof verifies; tampering triggers `RecursionDigestMismatch`.
+* **Objective:** parse `.air` incl. `Pedersen(curve)`, `PoseidonCommit`, `KeccakCommit` bindings.
+* **Files:** `/crates/corelib/src/air/{parser.rs,types.rs}`, `/tests/air_ir_{parser,degree}.rs`
+* **Steps:** grammar updates; type/binding checks; degree accounting unchanged.
+* **DoD:** `.air` files with commitment bindings parse and validate.
 
-### Task 2.5 — Cross-Backend Parity CI Job
-- Objective: automated parity across three backends.
-- Files: `/.github/workflows/ci.yml`, `/tests/cross_backend/parity_3x.rs`
-- Steps: prove sample programs across backends, compare `D`, fail on mismatch.
-- DoD: CI fails on parity drift; green otherwise.
+### Task 0.10 — Validation & Report System (commitment-aware)
 
-### Task 2.6 — Mobile-Recommended Profiles (desktop-safe)
-- Objective: publish mobile recursion profiles for Plonky2.
-- Files: `/profiles/rec-mobile-fast.toml`, `/profiles/rec-mobile-balanced.toml`
-- Steps: set `rows_max`/`max_inner`, conservative FRI params, add validator for caps.
-- DoD: large traces rejected on mobile profiles with clear error.
+* **Objective:** structured JSON validation with new errors and `commit_passed` flag.
+* **Files:** `/crates/corelib/src/validation.rs`, `/reports/`, `/tests/validation_commitments.rs`
+* **Steps:** config gates for curves/pedersen/keccak; runtime checks for point validity, r-reuse, range checks; report flagging.
+* **DoD:** ValidationReport includes `commit_passed`; negative tests log precise codes.
 
-### Task 2.7 — Docs & Examples for Plonky2
-- Objective: document usage.
-- Files: `/docs/recursion.md`, `/examples/plonky2/README.md`
-- Steps: add backend selection examples, performance notes, parity caveats.
-- DoD: example commands run locally.
+### Task 0.11 — Winterfell Adapter (v0.6)
+
+* **Objective:** adapter to real STARK engine (no recursion yet).
+* **Files:** `/crates/backends/winterfell/src/lib.rs`
+* **Steps:** map AIR to Winterfell; parameter mapping from profiles; capability declaration; minimal proof bridge.
+* **DoD:** end-to-end proofs/verify on toy & merkle AIR; cross-backend parity digest `D` with native on demos.
+
+### Task 0.12 — Integration Tests & Golden Vectors
+
+* **Objective:** e2e tests for toy/merkle/range/pedersen + golden vectors.
+* **Files:** `/tests/integration/{e2e_toy.rs,e2e_merkle.rs,e2e_range.rs,e2e_pedersen.rs}`, `/tests/golden_vectors/{program.hash,roots.json}`
+* **Steps:** produce vectors once; assert equality on CI; parity native↔winterfell.
+* **DoD:** CI matrix passes; digests equal; vectors archived.
+
+### Task 0.13 — Threat Model & Security Checks
+
+* **Objective:** document threats; add integrity guardrails.
+* **Files:** `/docs/threat-model.md`, `/crates/corelib/src/security.rs`
+* **Steps:** λ envelope; transcript domain tags; forbid floating-point; pedersen notes on r-reuse.
+* **DoD:** doc complete; tampering tests fail verification deterministically.
+
+### Task 0.14 — Runbook & Bench Script
+
+* **Objective:** reproducible build/bench.
+* **Files:** `/docs/runbook.md`, `/scripts/{build.sh,run_bench.sh}`
+* **Steps:** release build; bench toy/merkle/pedersen; CSV outputs.
+* **DoD:** scripts run unattended; pedersen time in bounds.
+
+### Task 0.15 — Phase 0 Retrospective & Docs Sync
+
+* **Objective:** finalize docs to match implementation.
+* **Files:** `/docs/{architecture.md,interfaces.md,validation.md,test-plan.md,roadmap.md}`
+* **Steps:** ensure sections for commitments/keccak are complete; link fixtures; update diagrams.
+* **DoD:** doc parity achieved; links validated.
 
 ---
 
-## Phase 2 — Acceleration (GPU, Plonky3, SNARK wrapper)
+## Phase 1 — Portability (Plonky2 + Recursion Scaffolding)
 
-> Goal: speed up proving and extend recursion while preserving determinism.
+> Goal: add Plonky2 backend, extend capability matrix, publish **mobile-recommended profiles**, and enable recursion IR scaffolding (no outer proofs yet).
 
-### Task 3.1 — GPU Feature Gate & Build Flags
-- Objective: toggle GPU kernels cleanly.
-- Files: `/Cargo.toml`, `/crates/corelib/src/gpu/mod.rs`, `/docs/runbook.md`
-- Steps: add `gpu` feature, stub `GpuFftFri` with CPU fallback, detect device/log capability.
-- DoD: builds succeed with/without `--features gpu`.
+### Task 1.1 — Capabilities Matrix (extended)
 
-### Task 3.2 — GPU FFT/FRI Kernels (Phase 1)
-- Objective: implement batched FFT and first FRI reduction on GPU.
-- Files: `/crates/gpu/src/{fft.rs,fri.rs}`, `/tests/gpu/fft_roundtrip.rs`
-- Steps: port radix-2 NTT to CUDA/OpenCL, validate forward/backward on 2¹⁴–2¹⁶ sizes.
-- DoD: 2–3× speedup on large traces; unit tests pass numerically.
+* **Files:** `/crates/corelib/src/capabilities.rs`, `/backends/*.json`, `/crates/corelib/tests/cap_matrix.rs`
+* **Steps:** add `curves`, `pedersen`, `keccak`; validate config/backends.
+* **DoD:** invalid combos rejected with precise error messages.
 
-### Task 3.3 — Plonky3 Adapter
-- Objective: integrate Plonky3 backend.
-- Files: `/crates/backends/plonky3/src/lib.rs`, `/tests/parity_plonky3.rs`
-- Steps: implement lowering/config mapping, recursion gadget, update parity tests.
-- DoD: digest parity matches native/WF/Plonky2 on demos.
+### Task 1.2 — AIR-IR → Backend Lowering Hooks
 
-### Task 3.4 — SNARK Wrapper Adapter (optional)
-- Objective: wrap multiple STARK proofs into succinct SNARK.
-- Files: `/crates/backends/snarkwrap/src/lib.rs`, `/docs/architecture.md`
-- Steps: define adapter verifying STARK transcript inside SNARK, expose verify-only SDK API.
-- DoD: aggregated SNARK proof verifies example batch.
+* **Files:** `/crates/corelib/src/air/lowering.rs`, `/crates/corelib/tests/air_lowering.rs`
+* **Steps:** define lowering for adapters; property tests; stability across runs.
+* **DoD:** lowering deterministic and panic-free.
 
-### Task 3.5 — Autotuner for Profiles
-- Objective: suggest params for target λ/time/memory.
-- Files: `/crates/corelib/src/tune.rs`, `/docs/runbook.md`
-- Steps: estimate runtime from rows/degree/device, suggest profile overrides, CLI command.
-- DoD: `zkd profile suggest` outputs reasonable configs.
+### Task 1.3 — Plonky2 Adapter: Basic Prove/Verify
 
-### Task 3.6 — Bench Harness & CSV Publisher
-- Objective: reproducible performance metrics.
-- Files: `/scripts/bench_matrix.sh`, `/bench/bench_matrix.rs`, `/bench/results/*.csv`
-- Steps: run program×backend×profile×gpu matrix, write CSV, gate regressions.
-- DoD: CSV uploaded as CI artifact; regression gate active.
+* **Files:** `/crates/backends/plonky2/src/{lib.rs,config.rs}`
+* **Steps:** map profiles; convert lowered program; proof serialization; declare recursion capability as `stark-in-stark`.
+* **DoD:** `zkd prove -b plonky2` on demos; digest `D` parity with native/winterfell.
 
-### Task 3.7 — Determinism Guard on GPU Path
-- Objective: ensure GPU matches CPU outputs.
-- Files: `/tests/determinism_gpu.rs`
-- Steps: prove via CPU & GPU, compare headers and `D`.
-- DoD: exact equality enforced.
+### Task 1.4 — Recursion IR (Backend-Neutral) + CLI Stubs
 
----
+* **Files:** `/crates/corelib/src/recursion.rs`, `/tests/recursion_spec.rs`, `/src/main.rs`
+* **Steps:** define `RecursionSpec`, header checks, digest rule; CLI `zkd prove --inner` arg parsing (no backend execution yet).
+* **DoD:** spec validated; parser & config errors well-formed.
 
-## Phase 3 — Integration (REST/gRPC, Docker, SDKs)
+### Task 1.5 — Mobile-Recommended Profiles
 
-> Goal: expose prover as service/library for other apps.
+* **Files:** `/profiles/{rec-mobile-fast.toml,rec-mobile-balanced.toml}`, `/crates/corelib/src/profile.rs`
+* **Steps:** caps for rows/max_inner; enforcement; clear errors.
+* **DoD:** large traces rejected with `RecursionLimitExceeded`.
 
-### Task 4.1 — REST API Server Skeleton
-- Objective: provide `/v0/prove` & `/v0/verify` with job queue.
-- Files: `/crates/server/src/main.rs`, `/openapi.yaml`
-- Steps: implement endpoints, validate inputs, stream JSONL logs.
-- DoD: curl round-trip works; OpenAPI served.
+### Task 1.6 — Cross-Backend Parity CI Job (3-way)
 
-### Task 4.2 — Docker & CI Build
-- Objective: containerize server & CLI.
-- Files: `/Dockerfile`, `/docker-compose.yaml`, `/.github/workflows/docker.yml`
-- Steps: multi-stage build, copy binaries, add healthcheck.
-- DoD: `docker run zkprov:latest` runs server; e2e test passes.
+* **Files:** `/.github/workflows/ci.yml`, `/tests/cross_backend/parity_3x.rs`
+* **Steps:** prove sample AIRs across native/winterfell/plonky2; compare `D`.
+* **DoD:** CI fails on drift; otherwise green.
 
-### Task 4.3 — AuthN/Z & Rate Limiting
-- Objective: API keys + rate limits.
-- Files: `/crates/server/src/auth.rs`, `/docs/runbook.md`
-- Steps: implement `X-Api-Key`, sliding-window limiter, log hashed key.
-- DoD: load test shows limits enforced.
+### Task 1.7 — Docs & Examples (Plonky2)
 
-### Task 4.4 — TypeScript SDK
-- Objective: Node/web client library.
-- Files: `/sdks/ts/src/index.ts`, `/sdks/ts/package.json`, `/sdks/ts/README.md`
-- Steps: wrap REST API, typed responses, build ESM/CJS.
-- DoD: `npm pack` works; example script runs.
-
-### Task 4.5 — Python SDK
-- Objective: scripting/data science friendly wrapper.
-- Files: `/sdks/py/zkprov/__init__.py`, `setup.py`, `README.md`
-- Steps: implement same API, requests + retries, build wheels.
-- DoD: `pip install -e .` works; example script verifies.
-
-### Task 4.6 — Proof Cache & Idempotency Keys
-- Objective: avoid recomputation for identical jobs.
-- Files: `/crates/server/src/cache.rs`
-- Steps: hash `(program_id, backend, profile, inputs)` to key, honor `Idempotency-Key`, return cached results.
-- DoD: repeated prove hits cache; metrics show hit rate.
-
-### Task 4.7 — Observability: Metrics & Tracing
-- Objective: expose Prometheus metrics + traces.
-- Files: `/crates/server/src/metrics.rs`, `/docs/runbook.md`
-- Steps: add `/metrics`, record QPS/latency/failures, trace job IDs.
-- DoD: Grafana dashboard shows backend latency.
-
-### Task 4.8 — Pluggable Storage Adapters
-- Objective: store proofs/reports in FS or cloud.
-- Files: `/crates/server/src/storage/{fs.rs,s3.rs}`, `/config/service.toml`
-- Steps: define `Storage` trait, implement FS + S3/GCS, config-driven selection.
-- DoD: large proofs retrievable via presigned URLs.
+* **Files:** `/docs/recursion.md`, `/examples/plonky2/README.md`
+* **Steps:** backend selection, profile notes, caveats.
+* **DoD:** examples run locally.
 
 ---
 
-## Phase 4 — Ecosystem & Tooling (Registry, Docs site, Bundles)
+## Phase 2 — Acceleration (GPU, Plonky3, Recursion Execute, SNARK Wrapper)
 
-> Goal: grow adoption and simplify integration.
+> Goal: speed up proving; land **Plonky3**; turn recursion spec into working aggregated proofs; optional SNARK wrapper.
 
-### Task 5.1 — Bundle Registry Format & CLI
-- Objective: publish/resolve reusable AIR bundles.
-- Files: `/crates/registry/src/lib.rs`, `/crates/cli/src/registry.rs`
-- Steps: define `bundle.json`, implement `zkd registry publish/install`, lock hashes.
-- DoD: `zkd registry install` pulls bundle, records in `zkd.lock`.
+### Task 2.1 — GPU Feature Gate & Stubs
 
-### Task 5.2 — Official Examples Repo (submodule)
-- Objective: curated tested examples.
-- Files: `/examples/*`, `.gitmodules`
-- Steps: add merkle/range/hash-chain/polyeval demos, ensure CI runs them.
-- DoD: examples pass on all supporting backends.
+* **Files:** `/Cargo.toml`, `/crates/corelib/src/gpu/mod.rs`, `/docs/runbook.md`
+* **Steps:** feature `gpu`; stub types; device detection logs.
+* **DoD:** builds succeed with/without `--features gpu`.
 
-### Task 5.3 — Docs Site (static)
-- Objective: publish docs with nav/search.
-- Files: `/docs/site/*`, `/docs/sidebar.json`
-- Steps: import RFCs/guides/API refs, deploy via Pages.
-- DoD: site live with passing link check.
+### Task 2.2 — GPU Kernels (FFT/FRI-1)
 
-### Task 5.4 — Multi-Lang Bindings Index
-- Objective: central index for bindings.
-- Files: `/docs/bindings.md`, `/sdks/*/README.md`
-- Steps: add canonical snippets, version matrix.
-- DoD: code samples compile/run.
+* **Files:** `/crates/gpu/src/{fft.rs,fri.rs}`, `/tests/gpu/fft_roundtrip.rs`
+* **Steps:** radix-2 NTT; first FRI reduction; numeric tests.
+* **DoD:** 2–3× speedup on 2¹⁶; unit tests pass.
 
-### Task 5.5 — Public CI Matrix (Backends × Profiles)
-- Objective: publish nightly matrix on beefy hardware.
-- Files: `/.github/workflows/matrix.yml`
-- Steps: nightly bench jobs, attach CSV/flamegraphs, notify on regressions.
-- DoD: trend graphs available via repo badges.
+### Task 2.3 — Plonky3 Adapter
 
-### Task 5.6 — Security Review & Hardening
-- Objective: external review + fixes.
-- Files: `/docs/security-review.md`, patches across core/backends.
-- Steps: run `cargo audit/deny`, commit fuzz seeds, fix crashers.
-- DoD: zero critical issues; review doc signed off.
+* **Files:** `/crates/backends/plonky3/src/lib.rs`, `/tests/parity_plonky3.rs`
+* **Steps:** lowering, profile mapping, recursion gadget hooks.
+* **DoD:** digest parity with other backends on demos.
 
-### Task 5.7 — 1.0 Release Packaging
-- Objective: prepare release artifacts.
-- Files: `/CHANGELOG.md`, release GH action
-- Steps: generate release notes, attach binaries (`zkd`, server image), publish SDK packages.
-- DoD: `v1.0.0` tag live; artifacts downloadable.
+### Task 2.4 — Recursion Execution (Outer Proof)
+
+* **Files:** `/crates/backends/plonky2/src/recursion.rs`, `/crates/backends/plonky3/src/recursion.rs`, `/tests/recursion_e2e.rs`
+* **Steps:** implement verification constraints in outer; validate headers; compute `D*`; CLI `zkd prove --inner ...` functional.
+* **DoD:** aggregated proof verifies; tampering → `RecursionDigestMismatch`.
+
+### Task 2.5 — Determinism Guard on GPU Path
+
+* **Files:** `/tests/determinism_gpu.rs`
+* **Steps:** CPU vs GPU exact equality of headers & `D`.
+* **DoD:** equality enforced; deviations error out.
+
+### Task 2.6 — SNARK Wrapper (optional adapter)
+
+* **Files:** `/crates/backends/snarkwrap/src/lib.rs`, `/docs/architecture.md`
+* **Steps:** verify STARK transcript inside a succinct SNARK; verify-only API.
+* **DoD:** wrapper proof verifies a batch.
+
+### Task 2.7 — Bench Harness & CSV Publisher
+
+* **Files:** `/scripts/bench_matrix.sh`, `/bench/{bench_matrix.rs,results/*.csv}`
+* **Steps:** run program×backend×profile×gpu; CSV artifacts; regression gates.
+* **DoD:** CI uploads CSV; regression guard active.
+
+---
+
+## Phase 3 — Integration (Service, Docker, SDKs, Observability)
+
+> Goal: expose as REST/gRPC service; ship SDKs; rate-limit, cache, metrics, storage; production containers.
+
+### Task 3.1 — REST API Server Skeleton
+
+* **Files:** `/crates/server/src/main.rs`, `/crates/server/src/{routes.rs,auth.rs,cache.rs,metrics.rs,storage/{fs.rs,s3.rs}}`, `/openapi.yaml`
+* **Steps:** `POST /v0/prove`, `POST /v0/verify`, `GET /v0/backends`, `GET /v0/profiles`; job queue; JSONL logs.
+* **DoD:** curl round-trip works; OpenAPI served.
+
+### Task 3.2 — Docker & CI Build
+
+* **Files:** `/Dockerfile`, `/docker-compose.yaml`, `/.github/workflows/docker.yml`
+* **Steps:** multi-stage build; healthcheck; push artifacts.
+* **DoD:** `docker run zkprov:latest` runs server; e2e test passes.
+
+### Task 3.3 — AuthN/Z & Rate Limiting
+
+* **Files:** `/crates/server/src/auth.rs`, `/docs/runbook.md`
+* **Steps:** `X-Api-Key`; sliding-window limiter; hashed key logs.
+* **DoD:** load test shows limits respected.
+
+### Task 3.4 — Proof Cache & Idempotency Keys
+
+* **Files:** `/crates/server/src/cache.rs`
+* **Steps:** hash `(program_id, backend, profile, inputs)`; honor `Idempotency-Key`; return cached results.
+* **DoD:** high cache hit rate on repeats.
+
+### Task 3.5 — Observability: Metrics & Tracing
+
+* **Files:** `/crates/server/src/metrics.rs`, dashboards in `/docs/runbook.md`
+* **Steps:** Prometheus `/metrics`; record QPS, latency, failures; trace job IDs.
+* **DoD:** Grafana dashboard shows backend latency.
+
+### Task 3.6 — TypeScript SDK
+
+* **Files:** `/sdks/ts/src/index.ts`, `/sdks/ts/package.json`, `/sdks/ts/README.md`
+* **Steps:** typed client for REST; ESM/CJS; retries; examples.
+* **DoD:** `npm pack` works; example script proves & verifies.
+
+### Task 3.7 — Python SDK
+
+* **Files:** `/sdks/py/zkprov/__init__.py`, `setup.py`, `README.md`
+* **Steps:** requests layer; retries; wheels build; examples.
+* **DoD:** `pip install -e .` works; script verifies.
+
+### Task 3.8 — Pluggable Storage Adapters
+
+* **Files:** `/crates/server/src/storage/{fs.rs,s3.rs}`, `/config/service.toml`
+* **Steps:** trait; FS + S3/GCS; presigned URLs.
+* **DoD:** large proofs retrievable via presigned links.
+
+---
+
+## Phase 4 — Ecosystem & Tooling (Registry, Examples, Docs Site, Public CI)
+
+> Goal: grow adoption; simplify integration; publish docs & examples; security hardening; v1.0 packaging.
+
+### Task 4.1 — Bundle Registry Format & CLI
+
+* **Files:** `/crates/registry/src/lib.rs`, `/crates/cli/src/registry.rs`
+* **Steps:** `bundle.json` schema; `zkd registry publish/install`; lockfile `zkd.lock`.
+* **DoD:** install pulls bundle; hashes locked.
+
+### Task 4.2 — Official Examples Repo (submodule)
+
+* **Files:** `/examples/*`, `.gitmodules`
+* **Steps:** merkle/range/pedersen/hash-chain/recursion demos; CI executes.
+* **DoD:** examples pass on supported backends.
+
+### Task 4.3 — Docs Site (static)
+
+* **Files:** `/docs/site/*`, `/docs/sidebar.json`
+* **Steps:** import RFCs/guides/API refs; deploy via Pages; link checker.
+* **DoD:** site live; all links green.
+
+### Task 4.4 — Multi-Lang Bindings Index
+
+* **Files:** `/docs/bindings.md`, `/sdks/*/README.md`
+* **Steps:** canonical snippets; version matrix; ABI notes for EVM.
+* **DoD:** code samples compile.
+
+### Task 4.5 — Public CI Matrix (Backends × Profiles)
+
+* **Files:** `/.github/workflows/matrix.yml`
+* **Steps:** nightly bench jobs on beefy runner; attach CSV/flamegraphs; notify regressions.
+* **DoD:** badges show trend graphs; auto-alerts on regressions.
+
+### Task 4.6 — Security Review & Hardening
+
+* **Files:** `/docs/security-review.md` + patches
+* **Steps:** `cargo audit/deny`; commit fuzz seeds; fix crashers; privacy notes (r-reuse, curve checks).
+* **DoD:** zero critical issues; review doc signed off.
+
+### Task 4.7 — v1.0 Release Packaging
+
+* **Files:** `/CHANGELOG.md`, `/.github/workflows/release.yml`
+* **Steps:** generate release notes; attach binaries (`zkd`, server image); publish SDK packages; version tags.
+* **DoD:** `v1.0.0` tag live; artifacts downloadable.
 
 ---
 
 ## Phase Completion Gates (Summary)
 
-* **Phase 1:** Plonky2 adapter operational; parity across 3 backends; mobile recursion profiles published.
-* **Phase 2:** GPU acceleration optional; Plonky3 adapter; SNARK wrapper optional; CPU/GPU determinism ensured.
-* **Phase 3:** REST/gRPC service in Docker; TS/Python SDKs; auth, rate limit, cache, metrics.
-* **Phase 4:** Bundle registry; examples repo; docs site; security review; 1.0 release packaging.
+**Phase 0 (Foundation + Commitments)**
+
+* [ ] Native & Winterfell backends working
+* [ ] Deterministic proofs & transcripts
+* [ ] **Crypto primitives** (Poseidon/Rescue/Merkle/Keccak) shipped
+* [ ] **Privacy gadgets** (Pedersen + Range + Arith) shipped
+* [ ] **EVM Interop** (KeccakCommit + ABI + Solidity digest stub) passes parity
+* [ ] CI coverage ≥ 80%, validation reports emitted
+
+**Phase 1 (Portability)**
+
+* [ ] Plonky2 adapter functional
+* [ ] Mobile recursion profiles enforce caps
+* [ ] 3-way parity native↔winterfell↔plonky2
+
+**Phase 2 (Acceleration & Recursion Execute)**
+
+* [ ] GPU kernels yield 2–3× on large traces
+* [ ] Plonky3 adapter functional
+* [ ] Recursion outer proof works; determinism guard passes
+
+**Phase 3 (Integration)**
+
+* [ ] REST/gRPC service in Docker
+* [ ] TS/Python SDKs live
+* [ ] Auth, rate limits, cache, metrics, storage adapters
+
+**Phase 4 (Ecosystem & Release)**
+
+* [ ] Bundle registry live
+* [ ] Examples & docs site live
+* [ ] Security review passed
+* [ ] v1.0 published
+
+---
+
+## Acceptance Criteria Map (Cross-Reference)
+
+* **Determinism:** identical headers & `D` across runs and hosts (Ph0–Ph2).
+* **Commitment correctness:** `commit_passed=true`; errors: `InvalidCurvePoint`, `BlindingReuse`, `RangeCheckOverflow`, `KeccakUnavailable`, `PedersenConfigMismatch` (Ph0).
+* **Parity:** cross-backend `D` equality (Ph0–Ph1–Ph2).
+* **Performance:** GPU speedup validated; pedersen benchmarks within documented bounds (Ph2).
+* **Service quality:** rate-limit & auth enforced; cache hit rate measured; metrics exposed (Ph3).
+* **Docs & DX:** examples compile; docs link-checked; SDK examples run (Ph4).
+* **Security:** `cargo audit/deny` clean; fuzz seeds locked; review doc signed (Ph4).
+
+---
+
+## Repo Layout Reminder (post-tasks)
+
+```
+/src
+  /air
+  /bundles              # pedersen, range, arith
+  /backend
+     native/
+     winterfell/
+     plonky2/
+     plonky3/
+     snarkwrap/         # optional
+  /crypto               # poseidon, rescue, merkle, keccak, hash_to_field
+  /cli
+  /evm                  # abi & digest helpers
+/crates
+  corelib/
+  backends/
+  gpu/
+  server/
+  registry/
+  ffi-c/               
+profiles/
+tests/
+  unit/
+  integration/
+  cross_backend/
+  negative/
+  fixtures/
+bench/
+docs/
+sdks/
+examples/
+scripts/
+```
 
 ---
