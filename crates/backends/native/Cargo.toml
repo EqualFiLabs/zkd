@@ -1,0 +1,15 @@
+[package]
+name = "zkprov-backend-native"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lib]
+name = "zkprov_backend_native"
+path = "src/lib.rs"
