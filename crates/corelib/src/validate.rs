@@ -1,3 +1,4 @@
+use crate::air::AirProgram;
 use crate::backend::Capabilities;
 use crate::config::Config;
 use crate::errors::{CapabilityError, RegistryError};
@@ -51,5 +52,34 @@ pub fn validate_config(cfg: &Config) -> Result<(), CapabilityError> {
         return Err(CapabilityError::ProfileNotFound(cfg.profile_id.clone()));
     }
 
+    Ok(())
+}
+
+/// Validate program (AIR) commitments against backend capabilities.
+/// - If AIR requires pedersen, backend must advertise pedersen=true.
+/// - If AIR provides a curve hint, backend.curves must contain it.
+pub fn validate_air_against_backend(
+    air: &AirProgram,
+    backend_id: &str,
+) -> Result<(), CapabilityError> {
+    let caps = get_caps(backend_id)
+        .map_err(|_| CapabilityError::Mismatch(format!("unknown backend '{}'", backend_id)))?;
+
+    if let Some(req) = &air.commitments {
+        if req.pedersen && !caps.pedersen {
+            return Err(CapabilityError::Mismatch(format!(
+                "program requires pedersen commitments but backend '{}' does not support them",
+                backend_id
+            )));
+        }
+        if let Some(curve) = &req.curve {
+            if !caps.curves.iter().any(|c| *c == curve.as_str()) {
+                return Err(CapabilityError::Mismatch(format!(
+                    "program requests curve '{}' but backend '{}' supports {:?}",
+                    curve, backend_id, caps.curves
+                )));
+            }
+        }
+    }
     Ok(())
 }

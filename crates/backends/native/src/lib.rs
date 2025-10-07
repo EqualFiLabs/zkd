@@ -6,7 +6,11 @@ use zkprov_corelib::crypto::registry::hash64_by_id;
 use zkprov_corelib::errors::RegistryError;
 use zkprov_corelib::registry::register_backend;
 use zkprov_corelib::trace::TraceShape;
-use zkprov_corelib::{config::Config, proof, validate::validate_config};
+use zkprov_corelib::{
+    config::Config,
+    proof,
+    validate::{validate_air_against_backend, validate_config},
+};
 
 #[derive(Debug, Default)]
 pub struct NativeBackend;
@@ -72,6 +76,7 @@ pub fn native_prove(
 
     // Load and validate AIR
     let air = AirProgram::load_from_file(air_path)?;
+    validate_air_against_backend(&air, &config.backend_id)?;
 
     // Header identifiers
     let backend_id_hash = proof::hash64("BACKEND", config.backend_id.as_bytes());
@@ -102,6 +107,7 @@ pub fn native_verify(
     validate_config(config)?;
 
     let air = AirProgram::load_from_file(air_path)?;
+    validate_air_against_backend(&air, &config.backend_id)?;
 
     if proof_bytes.len() < 40 {
         anyhow::bail!("proof too short");

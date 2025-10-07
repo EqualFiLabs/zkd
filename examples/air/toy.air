@@ -15,3 +15,7 @@ periodic_cols = 1
 [constraints]
 transition_count = 3
 boundary_count = 2
+
+[commitments]
+pedersen = true
+curve = "placeholder"

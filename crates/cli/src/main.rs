@@ -7,6 +7,9 @@ use zkprov_backend_native::{native_prove, native_verify};
 use zkprov_corelib as core;
 use zkprov_corelib::air::AirProgram;
 use zkprov_corelib::config::Config;
+use zkprov_corelib::gadgets::commitment::{
+    Comm32, CommitmentScheme32, PedersenParams, PedersenPlaceholder, Witness,
+};
 use zkprov_corelib::proof::ProofHeader;
 use zkprov_corelib::registry;
 use zkprov_corelib::trace::TraceShape;
@@ -96,6 +99,26 @@ enum Commands {
         #[command(flatten)]
         cfg: CommonCfg,
     },
+    /// Compute a Pedersen (placeholder) commitment for msg/blind (hex).
+    Commit {
+        #[arg(long = "hash")]
+        hash_id: String,
+        #[arg(long = "msg-hex")]
+        msg_hex: String,
+        #[arg(long = "blind-hex")]
+        blind_hex: String,
+    },
+    /// Verify opening against a commitment (all hex).
+    OpenCommit {
+        #[arg(long = "hash")]
+        hash_id: String,
+        #[arg(long = "msg-hex")]
+        msg_hex: String,
+        #[arg(long = "blind-hex")]
+        blind_hex: String,
+        #[arg(long = "commit-hex")]
+        commit_hex: String,
+    },
 }
 
 fn read_to_string(path: &str) -> Result<String> {
@@ -134,6 +157,41 @@ fn mk_config(c: &CommonCfg) -> Config {
 fn exit_for_corrupt_proof(err: &anyhow::Error) -> ! {
     eprintln!("Error: {err}");
     process::exit(EXIT_CORRUPT_PROOF);
+}
+
+// --- Hex helpers ---------------------------------------------------------
+
+fn hex_to_bytes(s: &str) -> Result<Vec<u8>> {
+    if s.len() % 2 != 0 {
+        return Err(anyhow!("hex string has odd length"));
+    }
+    let mut out = Vec::with_capacity(s.len() / 2);
+    let bytes = s.as_bytes();
+    for i in (0..bytes.len()).step_by(2) {
+        let hi = hex_val(bytes[i])?;
+        let lo = hex_val(bytes[i + 1])?;
+        out.push((hi << 4) | lo);
+    }
+    Ok(out)
+}
+
+fn hex_val(b: u8) -> Result<u8> {
+    match b {
+        b'0'..=b'9' => Ok(b - b'0'),
+        b'a'..=b'f' => Ok(b - b'a' + 10),
+        b'A'..=b'F' => Ok(b - b'A' + 10),
+        _ => Err(anyhow!("invalid hex char")),
+    }
+}
+
+fn bytes_to_hex(v: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(v.len() * 2);
+    for &b in v {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    out
 }
 
 fn main() -> Result<()> {
@@ -280,10 +338,59 @@ fn main() -> Result<()> {
                 ));
             }
         }
+        Some(Commands::Commit {
+            hash_id,
+            msg_hex,
+            blind_hex,
+        }) => {
+            registry::ensure_builtins_registered();
+            let msg = hex_to_bytes(&msg_hex)?;
+            let blind = hex_to_bytes(&blind_hex)?;
+            let ped = PedersenPlaceholder::new(PedersenParams { hash_id });
+            let commitment = ped.commit(&Witness {
+                msg: &msg,
+                blind: &blind,
+            })?;
+            println!("{}", bytes_to_hex(commitment.as_bytes()));
+        }
+        Some(Commands::OpenCommit {
+            hash_id,
+            msg_hex,
+            blind_hex,
+            commit_hex,
+        }) => {
+            registry::ensure_builtins_registered();
+            let msg = hex_to_bytes(&msg_hex)?;
+            let blind = hex_to_bytes(&blind_hex)?;
+            let cbytes = hex_to_bytes(&commit_hex)?;
+            if cbytes.len() != 32 {
+                return Err(anyhow!("commit-hex must be 32 bytes (64 hex chars)"));
+            }
+            let mut c32 = [0u8; 32];
+            c32.copy_from_slice(&cbytes);
+            let ped = PedersenPlaceholder::new(PedersenParams { hash_id });
+            let opened = ped.open(
+                &Witness {
+                    msg: &msg,
+                    blind: &blind,
+                },
+                &Comm32(c32),
+            )?;
+            if opened {
+                println!("✅ Opened");
+            } else {
+                println!("❌ Invalid opening");
+                process::exit(1);
+            }
+        }
         None => {
             println!("zkd {} — ready", core::version());
             println!("Try: `zkd backend-ls [-v]`, `zkd profile-ls`,");
             println!("     `zkd io-schema -p <program.air>`,",);
+            println!("     `zkd commit --hash <id> --msg-hex <..> --blind-hex <..>`,",);
+            println!(
+                "     `zkd open-commit --hash <id> --msg-hex <..> --blind-hex <..> --commit-hex <..>`,",
+            );
             println!(
                 "     `zkd prove -p <program> -i <inputs> -o <proof> --profile ... [--stats]`,",
             );

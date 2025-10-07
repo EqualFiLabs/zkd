@@ -45,6 +45,17 @@ pub struct AirConstraints {
     pub boundary_count: u32,
 }
 
+/// Optional commitments requirements (Phase-0 validation surface)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AirCommitments {
+    /// If true, program requires Pedersen (or compatible) commitment gadgets.
+    #[serde(default)]
+    pub pedersen: bool,
+    /// Optional curve name hint (e.g., "placeholder", "bn254")
+    #[serde(default)]
+    pub curve: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AirProgram {
     pub meta: AirMeta,
@@ -53,6 +64,9 @@ pub struct AirProgram {
     /// Optional hint for expected row count (power of two). Used to derive TraceShape.
     #[serde(default)]
     pub rows_hint: Option<u32>,
+    /// Optional commitments requirements (pedersen/curve hints)
+    #[serde(default)]
+    pub commitments: Option<AirCommitments>,
 }
 
 impl AirProgram {
@@ -101,6 +115,13 @@ impl AirProgram {
             }
             if r.count_ones() != 1 {
                 return Err(anyhow!("rows_hint must be a power of two"));
+            }
+        }
+        if let Some(c) = &self.commitments {
+            if let Some(curve) = &c.curve {
+                if curve.trim().is_empty() {
+                    return Err(anyhow!("commitments.curve cannot be empty when present"));
+                }
             }
         }
         Ok(())
