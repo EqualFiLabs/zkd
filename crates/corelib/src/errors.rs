@@ -20,4 +20,7 @@ pub enum CapabilityError {
     FriArityUnsupported { backend_id: String, fri_arity: u32 },
     #[error("recursion required but backend '{backend_id}' reports none")]
     RecursionUnavailable { backend_id: String },
+
+    #[error("profile '{0}' not found")]
+    ProfileNotFound(String),
 }

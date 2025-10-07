@@ -8,15 +8,17 @@ pub struct Config {
     pub hash: String,           // e.g., "blake3"
     pub fri_arity: u32,         // e.g., 2 or 4
     pub recursion_needed: bool, // true if caller intends to use recursion features
+    pub profile_id: String,     // e.g., "balanced"
 }
 
 impl Config {
-    pub fn new<S1: Into<String>, S2: Into<String>, S3: Into<String>>(
+    pub fn new<S1: Into<String>, S2: Into<String>, S3: Into<String>, S4: Into<String>>(
         backend_id: S1,
         field: S2,
         hash: S3,
         fri_arity: u32,
         recursion_needed: bool,
+        profile_id: S4,
     ) -> Self {
         Self {
             backend_id: backend_id.into(),
@@ -24,6 +26,7 @@ impl Config {
             hash: hash.into(),
             fri_arity,
             recursion_needed,
+            profile_id: profile_id.into(),
         }
     }
 }

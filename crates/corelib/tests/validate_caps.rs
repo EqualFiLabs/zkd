@@ -5,14 +5,14 @@ use zkprov_corelib::validate::validate_config;
 #[test]
 fn validate_ok_native_default() {
     ensure_builtins_registered();
-    let cfg = Config::new("native@0.0", "Prime254", "blake3", 2, false);
+    let cfg = Config::new("native@0.0", "Prime254", "blake3", 2, false, "balanced");
     assert!(validate_config(&cfg).is_ok());
 }
 
 #[test]
 fn invalid_field() {
     ensure_builtins_registered();
-    let cfg = Config::new("native@0.0", "Goldilocks", "blake3", 2, false);
+    let cfg = Config::new("native@0.0", "Goldilocks", "blake3", 2, false, "balanced");
     let err = validate_config(&cfg).unwrap_err().to_string();
     assert!(err.contains("field 'Goldilocks'"));
 }
@@ -20,7 +20,7 @@ fn invalid_field() {
 #[test]
 fn invalid_hash() {
     ensure_builtins_registered();
-    let cfg = Config::new("native@0.0", "Prime254", "keccak", 2, false);
+    let cfg = Config::new("native@0.0", "Prime254", "keccak", 2, false, "balanced");
     let err = validate_config(&cfg).unwrap_err().to_string();
     assert!(err.contains("hash 'keccak'"));
 }
@@ -28,7 +28,7 @@ fn invalid_hash() {
 #[test]
 fn invalid_arity() {
     ensure_builtins_registered();
-    let cfg = Config::new("native@0.0", "Prime254", "blake3", 8, false);
+    let cfg = Config::new("native@0.0", "Prime254", "blake3", 8, false, "balanced");
     let err = validate_config(&cfg).unwrap_err().to_string();
     assert!(err.contains("FRI arity '8'"));
 }
@@ -36,7 +36,22 @@ fn invalid_arity() {
 #[test]
 fn recursion_unavailable() {
     ensure_builtins_registered();
-    let cfg = Config::new("native@0.0", "Prime254", "blake3", 2, true);
+    let cfg = Config::new("native@0.0", "Prime254", "blake3", 2, true, "balanced");
     let err = validate_config(&cfg).unwrap_err().to_string();
     assert!(err.contains("recursion required"));
+}
+
+#[test]
+fn profile_missing() {
+    ensure_builtins_registered();
+    let cfg = Config::new(
+        "native@0.0",
+        "Prime254",
+        "blake3",
+        2,
+        false,
+        "does-not-exist",
+    );
+    let err = validate_config(&cfg).unwrap_err().to_string();
+    assert!(err.contains("profile 'does-not-exist'"));
 }

@@ -1,5 +1,5 @@
 //! Native backend adapter (scaffold). Implements traits and registers itself.
-//! This step adds deterministic stub prove/verify that emit a real header+body.
+//! This step uses the real profile_id when building/verifying the proof header.
 
 use zkprov_corelib::backend::{Capabilities, ProverBackend, VerifierBackend};
 use zkprov_corelib::errors::RegistryError;
@@ -52,7 +52,7 @@ pub fn native_prove(config: &Config, public_inputs_json: &str) -> anyhow::Result
 
     // 2) compute identifiers (hashes for header fields)
     let backend_id_hash = proof::hash64("BACKEND", config.backend_id.as_bytes());
-    let profile_id_hash = proof::hash64("PROFILE", b"default"); // real profile wiring later
+    let profile_id_hash = proof::hash64("PROFILE", config.profile_id.as_bytes());
     let pubio_hash = proof::hash64("PUBIO", public_inputs_json.as_bytes());
 
     // 3) construct a tiny deterministic body (digest of inputs)
@@ -95,7 +95,7 @@ pub fn native_verify(
     if expect_backend != header.backend_id_hash {
         anyhow::bail!("backend id hash mismatch");
     }
-    let expect_profile = proof::hash64("PROFILE", b"default");
+    let expect_profile = proof::hash64("PROFILE", config.profile_id.as_bytes());
     if expect_profile != header.profile_id_hash {
         anyhow::bail!("profile id hash mismatch");
     }

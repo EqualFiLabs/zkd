@@ -33,6 +33,9 @@ struct CommonCfg {
     /// Require recursion capability (fails if backend doesn't support)
     #[arg(long = "need-recursion", default_value_t = false)]
     need_recursion: bool,
+    /// Profile id, e.g. balanced
+    #[arg(long = "profile")]
+    profile_id: String,
 }
 
 #[derive(Subcommand)]
@@ -97,6 +100,7 @@ fn mk_config(c: &CommonCfg) -> Config {
         &c.hash,
         c.fri_arity,
         c.need_recursion,
+        &c.profile_id,
     )
 }
 
@@ -147,10 +151,10 @@ fn main() -> Result<()> {
             if config.backend_id == "native@0.0" {
                 let proof = native_prove(&config, &inputs)?;
                 write_bytes(&proof_out, &proof)?;
-                let hdr = ProofHeader::decode(&proof)?;
+                let hdr = ProofHeader::decode(&proof[0..40])?;
                 println!(
-                    "✅ ProofGenerated backend={} body_len={} pubio_hash=0x{:016x}",
-                    config.backend_id, hdr.body_len, hdr.pubio_hash
+                    "✅ ProofGenerated backend={} profile={} body_len={} pubio_hash=0x{:016x}",
+                    config.backend_id, config.profile_id, hdr.body_len, hdr.pubio_hash
                 );
                 println!("Wrote: {}", proof_out);
             } else {
@@ -174,10 +178,10 @@ fn main() -> Result<()> {
             if config.backend_id == "native@0.0" {
                 let ok = native_verify(&config, &inputs, &proof)?;
                 if ok {
-                    let hdr = ProofHeader::decode(&proof)?;
+                    let hdr = ProofHeader::decode(&proof[0..40])?;
                     println!(
-                        "✅ ProofVerified backend={} pubio_hash=0x{:016x}",
-                        config.backend_id, hdr.pubio_hash
+                        "✅ ProofVerified backend={} profile={} pubio_hash=0x{:016x}",
+                        config.backend_id, config.profile_id, hdr.pubio_hash
                     );
                 } else {
                     println!("❌ Verification failed");
@@ -193,7 +197,7 @@ fn main() -> Result<()> {
         None => {
             println!("zkd {} — ready", core::version());
             println!(
-                "Try: `zkd backend-ls [-v]`, `zkd profile-ls`, `zkd prove ...`, or `zkd verify ...`"
+                "Try: `zkd backend-ls [-v]`, `zkd profile-ls`, `zkd prove ... --profile ...`, or `zkd verify ... --profile ...`"
             );
         }
     }
