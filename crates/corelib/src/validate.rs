@@ -15,7 +15,7 @@ pub fn validate_config(cfg: &Config) -> Result<(), CapabilityError> {
         .map_err(|_| CapabilityError::Mismatch(format!("unknown backend '{}'", cfg.backend_id)))?;
 
     // Field
-    if !caps.fields.iter().any(|f| *f == cfg.field.as_str()) {
+    if !caps.fields.contains(&cfg.field.as_str()) {
         return Err(CapabilityError::FieldUnsupported {
             backend_id: cfg.backend_id.clone(),
             field: cfg.field.clone(),
@@ -23,7 +23,7 @@ pub fn validate_config(cfg: &Config) -> Result<(), CapabilityError> {
     }
 
     // Hash
-    if !caps.hashes.iter().any(|h| *h == cfg.hash.as_str()) {
+    if !caps.hashes.contains(&cfg.hash.as_str()) {
         return Err(CapabilityError::HashUnsupported {
             backend_id: cfg.backend_id.clone(),
             hash: cfg.hash.clone(),
@@ -31,7 +31,7 @@ pub fn validate_config(cfg: &Config) -> Result<(), CapabilityError> {
     }
 
     // FRI arity
-    if !caps.fri_arities.iter().any(|a| *a == cfg.fri_arity) {
+    if !caps.fri_arities.contains(&cfg.fri_arity) {
         return Err(CapabilityError::FriArityUnsupported {
             backend_id: cfg.backend_id.clone(),
             fri_arity: cfg.fri_arity,

@@ -39,7 +39,7 @@ impl ProofHeader {
         if bytes.len() < 40 {
             bail!("proof too short for header");
         }
-        if &bytes[0..4] != MAGIC {
+        if bytes[0..4] != MAGIC {
             bail!("bad magic");
         }
 

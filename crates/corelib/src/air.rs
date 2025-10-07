@@ -96,7 +96,7 @@ impl AirProgram {
         }
         // rows_hint sanity (power of two)
         if let Some(r) = self.rows_hint {
-            if r < 8 || r > (1 << 22) {
+            if !(8..=(1 << 22)).contains(&r) {
                 return Err(anyhow!("rows_hint out of range [2^3 .. 2^22]"));
             }
             if r.count_ones() != 1 {

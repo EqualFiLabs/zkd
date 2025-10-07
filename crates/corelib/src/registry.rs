@@ -62,8 +62,8 @@ pub fn ensure_builtins_registered() {
 
 fn register_native_backend() -> Result<(), RegistryError> {
     register_backend(
-        Box::new(NativeBuiltinBackend::default()),
-        Box::new(NativeBuiltinBackend::default()),
+        Box::new(NativeBuiltinBackend),
+        Box::new(NativeBuiltinBackend),
     )
 }
 
