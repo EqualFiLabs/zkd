@@ -54,6 +54,9 @@ Provide a **universal STARK proving system** capable of:
 * Docs: RFC, architecture, interfaces, validation, test-plan
 * Commitment & Privacy Gadgets: Pedersen, PoseidonCommit, KeccakCommit
 * Range-check bundle and validation coverage
+* **Pre-baked Application Profiles:**
+  Ready-made circuits for authentication, allowlist, attribute range, balance, uniqueness, solvency, private voting, file-inclusion, score-threshold, and age-gating use cases, plus a `profile-catalog.md` documenting schemas, presets, and validation vectors.
+  Delivered with SDK/CLI helpers and included in test/validation suites.
 * EVM-compatible Keccak and ABI encoders
 
 ### Exit Criteria

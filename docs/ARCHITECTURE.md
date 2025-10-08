@@ -236,3 +236,47 @@ The cryptographic and privacy modules unify proof commitments, enabling native i
 **Mantra:** *“Change the engine, keep the math.”*
 
 ---
+
+## 12. Application Profiles & Use Cases
+
+Although the core prover exposes a fully general AIR and bundling system, most developers will integrate through **pre-baked application profiles**.
+Each profile is a complete circuit (AIR + manifest + input schema) bundled with a human-readable identifier such as `zk-auth-pedersen-secret` or `zk-proof-of-solvency-lite`.
+Profiles are distributed with the core and surfaced through both the CLI (`zkd profile ls`) and the SDK (`load_profile(id)`).
+
+**Goals**
+
+* Accelerate integration by offering common zero-knowledge workflows as drop-in circuits.
+* Maintain full composability: advanced users can fork or extend profiles by editing manifests.
+* Guarantee deterministic results across backends and bindings.
+
+**Examples**
+
+| Profile ID | Purpose | Core Gadget Bindings | Typical Public Inputs |
+| ----------- | -------- | -------------------- | --------------------- |
+| `zk-auth-pedersen-secret` | Knowledge of secret for commitment `C` (auth/login) | PedersenCommit, PoseidonBind | `C`, `nonce`, `origin`, `nullifier` |
+| `zk-allowlist-merkle` | Membership in Merkle set with challenge binding | MerklePathVerify, PoseidonBind | `root`, `pk_hash`, `path`, `nonce`, `origin` |
+| `zk-attr-range` | Attribute within `[min,max]` without revealing value | RangeCheck, PedersenCommit | `commitment`, `min`, `max` |
+| `zk-balance-geq` | Balance ≥ threshold without disclosing balance | RangeCheck, PedersenCommit | `commitment`, `threshold`, `adapter_proof` |
+| `zk-uniqueness-nullifier` | One-use nullifier per epoch | PoseidonNullifier, PoseidonBind | `nullifier`, `epoch` |
+| `zk-proof-of-solvency-lite` | Assets ≥ liabilities commitment delta | MerklePathVerify, PedersenCommit, RangeCheck | `asset_root`, `liability_root`, `delta_commitment` |
+| `zk-vote-private` | Single private ballot from allowlist | MerklePathVerify, PedersenCommit, PoseidonBind | `root`, `vote_commitment`, `nonce`, `tally_binding` |
+| `zk-file-hash-inclusion` | Inclusion of file hash in committed set | MerklePathVerify, PoseidonBind | `root`, `file_hash`, `path` |
+| `zk-score-threshold` | Score ≥ threshold with epoch binding | PedersenCommit, RangeCheck | `commitment`, `threshold`, `epoch` |
+| `zk-age-over` | Age bound proof optimized for mobile | RangeCheckLite, PedersenCommit | `commitment`, `bound` |
+
+**Presets**
+
+Each profile ships multiple presets (`fast`, `balanced`, `tight`, `mobile`) which internally map to standard performance profiles from `/profiles/*.toml`.
+Developers can override presets at runtime using the same CLI/SDK flags as custom AIRs.
+
+**Extensibility**
+
+* All profiles follow the same manifest schema as user-defined AIRs.
+* Gadgets remain swappable — e.g., replace Pedersen with PoseidonCommit by editing the manifest.
+* Deterministic digests (`D`) are preserved across profile revisions.
+
+**Output**
+
+Profiles are versioned independently (e.g., `zk-auth-pedersen-secret@1.0.0`) and validated on CI alongside the core proof suite.
+
+---

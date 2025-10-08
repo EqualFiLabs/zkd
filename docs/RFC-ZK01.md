@@ -197,8 +197,43 @@ Each `PublicDecl` can now specify a binding type:
 | `PoseidonCommit` | Hash-based commitment for cheap hiding | Public scalar |
 | `KeccakCommit` | Keccak256-based commitment for EVM interop | Public scalar |
 
-Witness values that correspond to commitments (`v`, `r`) remain private.  
+Witness values that correspond to commitments (`v`, `r`) remain private.
 All commitments are encoded deterministically, curve-checked, and bound to the proof transcript.
+
+---
+
+### 9.1 Pre-Baked Application Profiles
+
+To accelerate developer adoption, the prover includes a library of **pre-baked application profiles**.
+Each profile combines an AIR circuit with a declarative manifest of public inputs, gadgets, and limits, enabling developers to integrate common ZK workflows without writing AIR code.
+
+Profiles are loaded via `zkd profile ls` or through the SDK:
+
+```ts
+import { prove } from "@zkd/sdk";
+prove({ profile_id: "zk-auth-pedersen-secret", public_inputs: { C, nonce, origin } });
+```
+
+Each profile is:
+
+* **Deterministic:** identical digest `D` across backends and bindings.
+* **Composable:** gadgets and parameters editable for advanced users.
+* **Documented:** manifests published in `profile-catalog.md`.
+
+Initial profiles:
+
+1. `zk-auth-pedersen-secret` — passwordless secret authentication
+2. `zk-allowlist-merkle` — allowlist membership with replay protection
+3. `zk-attr-range` — attribute range proof
+4. `zk-balance-geq` — balance ≥ threshold attest
+5. `zk-uniqueness-nullifier` — one-use nullifier per epoch
+6. `zk-proof-of-solvency-lite` — assets vs liabilities delta commitment
+7. `zk-vote-private` — private ballot from allowlist
+8. `zk-file-hash-inclusion` — document inclusion proof
+9. `zk-score-threshold` — reputation/score ≥ threshold
+10. `zk-age-over` — mobile-optimized age gate
+
+These adhere to the same validation, commitment, and digest-binding rules defined elsewhere in this RFC.
 
 ---
 

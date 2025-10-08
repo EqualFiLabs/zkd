@@ -1,19 +1,14 @@
-Here’s a **fully regenerated `TASKLIST.md`** that bakes in the new crypto primitives, privacy gadgets (Pedersen, range, arithmetic under commitments), and EVM interop (Keccak + ABI + Solidity stub), and carries through all phases to a finished v1.0 with docs, SDKs, GPU, recursion, registry, and security review. It keeps your “micro-task + DoD + files” structure and is consistent with the rest of the spec suite.
-
----
-
 # Tasklist — General-Purpose STARK Prover
 
-**Parent RFC:** RFC-ZK01 v0.3 (post-commitment update)
-**Status:** Living document (update as tasks close)
-**Goal:** Deliver a deterministic, multi-backend STARK prover with commitments, privacy gadgets, and EVM interop; ship as CLI + library + service with SDKs and docs.
+**Parent RFC:** RFC-ZK01 v0.3 (post-commitment + profiles update)
+**Status:** Living document
+**Goal:** Deliver a deterministic, multi-backend STARK prover with commitments, privacy gadgets, EVM interop, and a growing library of pre-baked ZK proof profiles usable out-of-the-box.
 
 ---
 
 ## Phase 0 — Foundation (MVP + Commitments)
 
-> Goal: ship a working deterministic prover with CLI/SDK, baseline backends, **crypto primitives**, **privacy gadgets**, and **EVM interop**.
-> Exit: CI green (coverage ≥80%), deterministic proofs, commitment tests pass, Solidity digest parity passes.
+> Goal: Working deterministic prover with CLI/SDK, baseline backends, crypto primitives, privacy gadgets, EVM interop, and initial docs.
 
 ### Task 0.1 — Repository Scaffold & Base Tooling
 
@@ -196,6 +191,54 @@ Here’s a **fully regenerated `TASKLIST.md`** that bakes in the new crypto prim
 * **Files:** `/docs/{architecture.md,interfaces.md,validation.md,test-plan.md,roadmap.md}`
 * **Steps:** ensure sections for commitments/keccak are complete; link fixtures; update diagrams.
 * **DoD:** doc parity achieved; links validated.
+
+---
+
+### Task 0.16 — Pre-Baked Application Profiles (Initial Set)
+
+* **Objective:** Provide ready-to-use AIR programs and manifests for common zero-knowledge use cases.
+* **Files:** `/profiles/catalog.toml`, `/programs/{profile_id}.air` for each catalog entry, `/tests/profiles/{profile_id}.rs` (using snake_case identifiers).
+* **Steps:**
+
+  1. Implement the starter library of ten profiles:
+
+     * **zk-auth-pedersen-secret:** Pedersen-based secret login bound to `(nonce, origin)`.
+     * **zk-allowlist-merkle:** Merkle allowlist membership with replay protection.
+     * **zk-attr-range:** Attribute range proof for `[min,max]` constraints.
+     * **zk-balance-geq:** Balance ≥ threshold attest with optional adapter binding.
+     * **zk-uniqueness-nullifier:** One-action-per-epoch nullifier proof.
+     * **zk-proof-of-solvency-lite:** Assets vs liabilities delta commitment check.
+     * **zk-vote-private:** Allowlisted private ballot casting tied to tally session.
+     * **zk-file-hash-inclusion:** Document hash inclusion proof for provenance.
+     * **zk-score-threshold:** Hidden reputation/score ≥ threshold with epoch binding.
+     * **zk-age-over:** Mobile-optimized age gate for ≥18/≥21 attestations.
+  2. Declare public-input schema for each in TOML.
+  3. Bind commitment gadgets from `bundles/`.
+  4. Add deterministic golden vectors under `/tests/golden_vectors/profiles/`.
+* **DoD:** Each profile compiles and verifies locally on the `native` backend; manifests listed by `zkd profile ls`; CLI proves/verifies all examples.
+
+### Task 0.17 — SDK Helpers & Manifest Generator
+
+* **Objective:** Add developer ergonomics for working with pre-baked profiles.
+* **Files:** `/crates/sdk/src/profiles.rs`, `/crates/sdk/tests/profiles.rs`
+* **Steps:**
+
+  1. Create `load_profile(id)` and `generate_inputs(id, template)` helpers.
+  2. Support manifest generation → JSON for any profile (`zkd profile export <id>`).
+  3. Expose helper CLI flags `--profile preset` & `--template inputs`.
+* **DoD:** `zkd profile export zk-auth-pedersen-secret` prints canonical manifest; SDK round-trip tests pass.
+
+### Task 0.18 — Profile Integration & Validation Tests
+
+* **Objective:** Ensure pre-baked profiles integrate cleanly into validation and reporting.
+* **Files:** `/crates/corelib/src/validation.rs`, `/tests/profiles_validation.rs`
+* **Steps:**
+
+  1. Extend `ValidationReport` with `profile_id` and `usecase`.
+  2. Verify digest `D` stability across backends for each profile.
+  3. Negative tests: tamper inputs → `TranscriptMismatch`; wrong curve → `InvalidCurvePoint`.
+  4. Docs sync → update `architecture.md`, `interfaces.md`, `roadmap.md`.
+* **DoD:** Validation reports include `profile_id`; cross-backend parity green; documentation updated.
 
 ---
 
@@ -444,6 +487,28 @@ Here’s a **fully regenerated `TASKLIST.md`** that bakes in the new crypto prim
 * **Service quality:** rate-limit & auth enforced; cache hit rate measured; metrics exposed (Ph3).
 * **Docs & DX:** examples compile; docs link-checked; SDK examples run (Ph4).
 * **Security:** `cargo audit/deny` clean; fuzz seeds locked; review doc signed (Ph4).
+
+### Acceptance Criteria for Pre-Baked Profiles
+
+* Each profile builds deterministically on all supported backends.
+* `zkd profile ls` and SDK APIs expose them with descriptions.
+* `ValidationReport` includes matching `profile_id`.
+* CLI `zkd prove --profile zk-auth-pedersen-secret` → proof verifies with identical digest `D`.
+* Negative tamper tests produce correct structured errors.
+* Documentation updated in:
+
+  * `architecture.md` §12 (Application Profiles & Use Cases)
+  * `interfaces.md` (Application Profiles & Presets)
+  * `rfc-zk01.md` §9.1 (Pre-Baked Application Profiles)
+  * `roadmap.md` (deliverables list)
+
+✅ **Deliverables Summary**
+
+| ID   | Deliverable            | Description                                                          |
+| ---- | ---------------------- | -------------------------------------------------------------------- |
+| 0.16 | Profile Library        | Initial AIR programs for auth, allowlist, range, balance, uniqueness, solvency, voting, file inclusion, score, age gating |
+| 0.17 | SDK & CLI Helpers      | Profile manifest generation and typed input builders                 |
+| 0.18 | Validation Integration | Cross-backend and negative tests + docs sync                         |
 
 ---
 

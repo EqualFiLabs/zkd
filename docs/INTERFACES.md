@@ -401,6 +401,49 @@ This expands to two field elements `(Cx,Cy)` and enforces curve membership via t
 
 ---
 
+### Application Profiles & Presets
+
+In addition to generic AIR programs, the prover ships a library of **pre-baked application profiles** encoding common zero-knowledge constructions.
+Each profile defines:
+
+* **Manifest** — describes the AIR, field modulus, public-input schema, and gadget bindings.
+* **Presets** — safe default parameter sets (`fast`, `balanced`, `tight`, `mobile`).
+* **Profile ID** — unique identifier (e.g., `zk-auth-pedersen-secret`, `zk-proof-of-solvency-lite`).
+
+#### Typical Application Profiles
+
+| ID | Description | Gadgets | Public Inputs |
+|----|--------------|----------|---------------|
+| `zk-auth-pedersen-secret` | Passwordless secret authentication bound to `(nonce, origin)` | PedersenCommit, PoseidonBind | `C`, `nonce`, `origin`, `nullifier` |
+| `zk-allowlist-merkle` | Merkle allowlist membership plus session binding | MerklePathVerify, PoseidonBind | `root`, `pk_hash`, `path`, `nonce`, `origin` |
+| `zk-attr-range` | Attribute within declared bounds | RangeCheck, PedersenCommit | `commitment`, `min`, `max` |
+| `zk-balance-geq` | Balance ≥ threshold with optional adapter proof | RangeCheck, PedersenCommit | `commitment`, `threshold`, `adapter_proof` |
+| `zk-uniqueness-nullifier` | One action per epoch using nullifier | PoseidonNullifier, PoseidonBind | `nullifier`, `epoch` |
+| `zk-proof-of-solvency-lite` | Asset/liability delta commitment | MerklePathVerify, PedersenCommit, RangeCheck | `asset_root`, `liability_root`, `delta_commitment` |
+| `zk-vote-private` | Private ballot casting from allowlist | MerklePathVerify, PedersenCommit, PoseidonBind | `root`, `vote_commitment`, `nonce`, `tally_binding` |
+| `zk-file-hash-inclusion` | Document hash inclusion in Merkle root | MerklePathVerify, PoseidonBind | `root`, `file_hash`, `path` |
+| `zk-score-threshold` | Hidden score ≥ threshold tied to epoch | PedersenCommit, RangeCheck | `commitment`, `threshold`, `epoch` |
+| `zk-age-over` | Mobile-optimized age ≥ bound proof | RangeCheckLite, PedersenCommit | `commitment`, `bound` |
+
+#### Preset Customization
+
+Developers may override any preset via CLI/SDK parameters:
+
+```bash
+zkd prove --profile zk-auth-pedersen-secret --preset tight
+```
+
+or programmatically:
+
+```ts
+prove({ profile_id: "zk-auth-pedersen-secret", options: { preset: "mobile" } });
+```
+
+Presets reference performance profiles in `/profiles/*.toml` and map to deterministic resource limits.
+Advanced users can clone and edit manifests for full customization.
+
+---
+
 ## 6. Event Interfaces
 
 ### 6.1 Emitted JSONL
