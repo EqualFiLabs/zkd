@@ -162,7 +162,7 @@ fn exit_for_corrupt_proof(err: &anyhow::Error) -> ! {
 // --- Hex helpers ---------------------------------------------------------
 
 fn hex_to_bytes(s: &str) -> Result<Vec<u8>> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err(anyhow!("hex string has odd length"));
     }
     let mut out = Vec::with_capacity(s.len() / 2);

@@ -73,7 +73,7 @@ pub fn validate_air_against_backend(
             )));
         }
         if let Some(curve) = &req.curve {
-            if !caps.curves.iter().any(|c| *c == curve.as_str()) {
+            if !caps.curves.contains(&curve.as_str()) {
                 return Err(CapabilityError::Mismatch(format!(
                     "program requests curve '{}' but backend '{}' supports {:?}",
                     curve, backend_id, caps.curves
