@@ -530,17 +530,18 @@ mod tests {
         let mut prove_meta_ptr: *mut c_char = ptr::null_mut();
         let status = unsafe {
             zkp_prove(
-            backend.as_ptr(),
-            field.as_ptr(),
-            hash.as_ptr(),
-            2,
-            profile.as_ptr(),
-            air.as_ptr(),
-            inputs.as_ptr(),
-            &mut proof_ptr,
-            &mut proof_len,
-            &mut prove_meta_ptr,
-        )};
+                backend.as_ptr(),
+                field.as_ptr(),
+                hash.as_ptr(),
+                2,
+                profile.as_ptr(),
+                air.as_ptr(),
+                inputs.as_ptr(),
+                &mut proof_ptr,
+                &mut proof_len,
+                &mut prove_meta_ptr,
+            )
+        };
         assert_eq!(status, ZKP_OK);
         assert!(proof_len >= 40);
         assert!(!proof_ptr.is_null());
@@ -557,17 +558,18 @@ mod tests {
         let mut verify_meta_ptr: *mut c_char = ptr::null_mut();
         let status = unsafe {
             zkp_verify(
-            backend.as_ptr(),
-            field.as_ptr(),
-            hash.as_ptr(),
-            2,
-            profile.as_ptr(),
-            air.as_ptr(),
-            inputs.as_ptr(),
-            proof_ptr as *const u8,
-            proof_len,
-            &mut verify_meta_ptr,
-        )};
+                backend.as_ptr(),
+                field.as_ptr(),
+                hash.as_ptr(),
+                2,
+                profile.as_ptr(),
+                air.as_ptr(),
+                inputs.as_ptr(),
+                proof_ptr as *const u8,
+                proof_len,
+                &mut verify_meta_ptr,
+            )
+        };
         assert_eq!(status, ZKP_OK);
         assert!(!verify_meta_ptr.is_null());
         let verify_meta = unsafe { CStr::from_ptr(verify_meta_ptr) }
