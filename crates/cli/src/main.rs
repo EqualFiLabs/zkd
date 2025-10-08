@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Args, Parser, Subcommand};
+use std::convert::TryFrom;
 use std::fs;
 use std::path::Path;
 use std::process;
@@ -7,6 +8,7 @@ use zkprov_backend_native::{native_prove, native_verify};
 use zkprov_corelib as core;
 use zkprov_corelib::air::AirProgram;
 use zkprov_corelib::config::Config;
+use zkprov_corelib::evm::digest::digest_D;
 use zkprov_corelib::gadgets::commitment::{
     Comm32, CommitmentScheme32, PedersenParams, PedersenPlaceholder, Witness,
 };
@@ -118,6 +120,12 @@ enum Commands {
         blind_hex: String,
         #[arg(long = "commit-hex")]
         commit_hex: String,
+    },
+    /// Compute the Keccak digest (D) used by the EVM verifier from a proof blob.
+    EvmDigest {
+        /// Proof file path
+        #[arg(short = 'P', long = "proof")]
+        proof_path: String,
     },
 }
 
@@ -386,6 +394,34 @@ fn main() -> Result<()> {
                 println!("❌ Invalid opening");
                 process::exit(1);
             }
+        }
+        Some(Commands::EvmDigest { proof_path }) => {
+            let proof = read_to_bytes(&proof_path)?;
+            if proof.len() < 40 {
+                return Err(anyhow!(
+                    "proof '{}' is too short for header ({} bytes)",
+                    proof_path,
+                    proof.len()
+                ));
+            }
+            let header = ProofHeader::decode(&proof[0..40])?;
+            let body_len = usize::try_from(header.body_len).map_err(|_| {
+                anyhow!("header body_len {} does not fit in memory", header.body_len)
+            })?;
+            let expected_len = 40usize
+                .checked_add(body_len)
+                .ok_or_else(|| anyhow!("proof length overflow"))?;
+            if proof.len() != expected_len {
+                return Err(anyhow!(
+                    "proof '{}' length ({}) does not match header body_len {}",
+                    proof_path,
+                    proof.len(),
+                    header.body_len
+                ));
+            }
+            let body = &proof[40..expected_len];
+            let digest = digest_D(&header, body);
+            println!("0x{}", bytes_to_hex(&digest));
         }
         None => {
             println!("zkd {} — ready", core::version());
