@@ -14,8 +14,9 @@ The proving engine is structured as a **layered stack**:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                         CLI / SDK                            │
-│      (zkd, Rust bindings, JSON configs, profiles)             │
+│                      CLI / SDK / FFI                         │
+│ (zkd CLI, Rust SDK, JSON configs, profiles, C ABI + bindings) │
+│   • Bindings: Node/TS, Python, Go, .NET, Swift/iOS, WASI      │
 ├──────────────────────────────────────────────────────────────┤
 │                    Coordinator Layer                          │
 │   • Loads AIR-IR + Bundles                                   │
@@ -87,6 +88,7 @@ The proving engine is structured as a **layered stack**:
 
 | Layer               | Responsibility                                     | Key Interfaces                       |
 | ------------------- | -------------------------------------------------- | ------------------------------------ |
+| **CLI / SDK / FFI** | User entrypoints; exposes C ABI & language bindings | `zkd`, `zkp_*` functions, language SDKs |
 | **Coordinator**     | Lifecycle mgmt, config validation, event logging   | `Prover::run()`, `Verifier::run()`   |
 | **AIR-IR**          | Algebraic definitions portable across backends     | `AirProgram`, `Constraint`, `Column` |
 | **Bundle Engine**   | Reusable gadgets; composition + degree enforcement | `BundleSpec`, `BundleRegistry`       |
@@ -196,6 +198,9 @@ All events append to `events.jsonl` for observability.
   /crypto       → field, FRI, hash, merkle, keccak, poseidon, pedersen
   /evm          → ABI + digest helpers
   /cli          → zkd command tool
+/include        → generated C header (zkprov.h)
+/bindings       → language bindings (node/, python/, go/, dotnet/, swift/, wasm/)
+/libs           → compiled shared libraries (libzkprov.so, .dylib, .dll, .wasm)
 /docs
   rfc.md
   architecture.md

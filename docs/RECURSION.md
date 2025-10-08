@@ -253,12 +253,23 @@ We’ll publish exact numbers per backend in `bench_results.csv`.
 
 ## 14) Integration Guidelines for Host Apps
 
-* Load the library via **C ABI** (see `runbook.md` + FFI header).
+* Load the library via **C ABI** (see `runbook.md` + FFI header) or the maintained language bindings (Node/TypeScript, Python, Go, .NET, Swift/iOS, WASI) which wrap the same exported functions.
 * When using recursion:
 
   * Validate inner proof headers first (`zkp_verify` cheap-path) before passing to `prove_recursive`.
   * Prefer **digest handoffs**: host app consumes only `D*` unless it truly needs inner details.
   * Use **mobile recommended profiles** on iOS/Android; allow users to opt into slower “balanced” desktop presets on powerful devices.
+
+**Swift/iOS example:**
+
+```swift
+let prover = ZKProver()
+let proof = try prover.prove(config: .recursiveToy)
+let verified = try prover.verify(config: .recursiveToy, proof: proof)
+assert(verified)
+```
+
+Bindings on other platforms expose equivalent `prove`/`verify` entrypoints that call `zkp_verify` and `prove_recursive` under the hood. Always validate inner headers regardless of language.
 
 ---
 

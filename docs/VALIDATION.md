@@ -19,6 +19,8 @@ Validation occurs in four domains:
 
 Every run produces a deterministic `ValidationReport` object (see § 7).
 
+For host-language integrations, the FFI bindings surface the same validation pipeline; see `interfaces.md` §3 for binding guidance.
+
 ---
 
 ## 2. Configuration Validation
@@ -133,6 +135,7 @@ Each adapter runs its own sanity tests at registration time.
 | Proof Roundtrip      | Self-prove and verify toy AIR internally.                                  |
 | Profile Mapping      | λ(profile) ≥ λ_min under adapter’s params.                                 |
 | Serialization Parity | Proof bytes parse to identical commitments across versions.                |
+| FFI Harness          | C ABI round-trip (`zkp_init` → `zkp_prove` → `zkp_verify`) succeeds using the shared library harness. |
 
 Backends failing self-tests are refused registration.
 

@@ -26,6 +26,8 @@ This plan defines the **unit**, **integration**, **cross-backend**, **negative**
 * **CPU Features:** AVX2 preferred (falls back if unavailable)
 * **Profiles under test:** `dev-fast`, `balanced`, `secure`
 * **Backends under test (Phase 0):** `native`, `winterfell@0.6`
+* **Language runtimes:** Node.js LTS (18/20), Python 3.10+, Go 1.20+, .NET 6+, Swift 5.8+, WASI runtime (wasmtime ≥ 15)
+* **Shared libraries:** Prebuilt `libzkprov` artifacts for Linux (x86_64, aarch64), macOS (universal), Windows (MSVC) plus `.wasm` for WASI
 
 ---
 
@@ -329,7 +331,24 @@ See `validation.md` for report schema.
 
 ---
 
-## 15) CI Matrix & Gates
+## 15) FFI & Multi-Language Tests
+
+* **C harness round-trip:** Build and run `tests/ffi/c_roundtrip.c` against `libzkprov` to call `zkp_init`, `zkp_prove`, and `zkp_verify` on toy and merkle fixtures; assert return codes are `NULL` and free all pointers via `zkp_free`.
+* **Node/TypeScript binding test:** Execute the N-API addon’s jest/tap suite to prove and verify the toy AIR asynchronously; compare digests with CLI fixtures.
+* **Python binding test:** Use `pytest` with `ctypes`/`cffi` wrapper to call the shared library, deserialize JSON responses, and ensure proof buffers are freed explicitly.
+* **Go binding test:** Run `go test ./bindings/go/...` to compile the cgo wrapper and prove/verify toy + merkle programs.
+* **.NET binding test:** Execute `dotnet test` for the P/Invoke wrapper, ensuring `SafeHandle` disposes buffers.
+* **Swift/iOS test:** Build the Swift Package Example (macOS + iOS simulator) verifying a recursive proof via the Swift binding.
+* **WASI/WebAssembly test:** Run `wasmtime` against the wasm binding to confirm `zkp_verify` passes for the toy fixture in a WASI sandbox.
+* **Cross-language parity:** Generate a proof through the CLI/SDK and verify it in each binding (and vice versa) asserting identical `D` digests and seeds.
+* **Memory leak checks:** Run Valgrind (Linux), Instruments (macOS), and `dotnet-counters` to ensure repeated FFI calls do not leak when `zkp_free` is used.
+* **Callback test:** Register an event callback from each binding, run a proof, and assert receipt of progress JSONL messages with monotonically increasing `percent`.
+
+All bindings publish CI jobs that build language packages, link against the shipped `libzkprov` artifacts, and upload logs/artifacts mirroring CLI/SDK tests.
+
+---
+
+## 16) CI Matrix & Gates
 
 **Matrix**
 
@@ -349,7 +368,7 @@ This satisfies the PPP execution & iteration flow with passing test suite and cl
 
 ---
 
-## 16) Acceptance Criteria (MVP)
+## 17) Acceptance Criteria (MVP)
 
 * [ ] **Unit**: Algebra, Merkle, Transcript, FRI, AIR-IR, Public I/O all green
 * [ ] **Integration**: toy/merkle/runsum prove & verify on `native` and `winterfell`
@@ -358,11 +377,12 @@ This satisfies the PPP execution & iteration flow with passing test suite and cl
 * [ ] **Fuzz**: no panics; rejects invalid FRI ranges; parser stable
 * [ ] **Performance**: within expected ranges; no OOM
 * [ ] **Determinism**: identical seeds/headers across runs and hosts
+* [ ] **FFI**: C ABI + Node/TS, Python, Go, .NET, Swift, WASI bindings pass round-trip and parity tests across supported OSes
 * [ ] **CI Gates**: matrix passes; coverage thresholds met
 
 ---
 
-## 17) Expansion (Phase 2+)
+## 18) Expansion (Phase 2+)
 
 * Add Plonky2/3 to matrix; enable recursion tests (stark-in-stark).
 * Add GPU kernels to bench matrix.
@@ -371,7 +391,7 @@ This satisfies the PPP execution & iteration flow with passing test suite and cl
 
 ---
 
-## 18) Rationale
+## 19) Rationale
 
 This plan enforces the PPP principle of **tight, implementation-ready specs** with explicit success conditions and reproducible commands. It keeps tests atomic (1–2 hours when run locally in subsets) and ties results to deterministic artifacts and golden vectors. 
 

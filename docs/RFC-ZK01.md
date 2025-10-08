@@ -20,6 +20,7 @@ Version 0.2 introduces the **Backend Adapter Layer**, enabling portable proofs a
 | **Verifier Engine**  | Reconstructs transcript and verifies proof deterministically.              |
 | **Bundle Author**    | Creates reusable sub-AIR gadgets with typed ports and degree bounds.       |
 | **Backend Adapter**  | Translates AIR-IR into backend-specific API (Winterfell, Plonky2/3, etc.). |
+| **Binding Maintainer** | Keeps language bindings in sync with the C ABI; ships Node/TS, Python, Go, .NET, Swift, WASI packages. |
 | **Profile Registry** | Maintains security parameter presets (dev, balanced, secure).              |
 
 ---
@@ -152,6 +153,7 @@ Output: `verified: bool`.
 | --------------- | ------------- | --------------------------------------------------------------------------------- |
 | CLI             | User ↔ Engine | `zkd prove -p program.air -i inputs.json --backend winterfell --profile balanced` |
 | Rust SDK        | Library       | `prove(program, trace, pub_in, profile, backend)` / `verify(...)`                 |
+| **C ABI & FFI** | Language ↔ Engine | `zkp_init()`, `zkp_prove(cfg)`, `zkp_verify(...)` etc.; wrapped by Node/TS, Python, Go, .NET, Swift, WASI bindings |
 | Backend Trait   | Internal      | `ProverBackend` / `VerifierBackend`                                               |
 | Config Schema   | JSON/TOML     | validated params (field, hash, profile, backend)                                  |
 | Bundle Registry | File/Dir      | `*.bundle` describing ports + generator                                           |
@@ -222,12 +224,14 @@ All events logged JSONL + stdout.
 ## 12. Security & Privacy Considerations
 
 * **Soundness:** Each backend must guarantee λ ≥ declared target.
-* **Determinism:** Transcripts stable given same backend + profile.
+* **Determinism:** Transcripts stable given same backend + profile across CLI, SDK, and FFI bindings.
 * **Integrity:** Merkle and FRI commitments binding.
 * **Cross-backend parity:** Equivalent AIR + public inputs → proof verifies on all backends supporting same field/hash.
-* **Isolation:** Adapters sandboxed; no network I/O during prove/verify.
+* **Isolation:** Adapters sandboxed; no network I/O during prove/verify. FFI bindings must propagate validation results without mutating proof bytes.
 * **Side Channels:** Constant-time field ops in secure profile.
 * **Versioning:** Program hash includes backend id to prevent mismatched proof reuse.
+
+FFI bindings are required to forward `ValidationReport` objects and structured errors without alteration so that determinism and security guarantees hold independent of the host language.
 
 ### 12.1 Privacy & Commitment Security
 

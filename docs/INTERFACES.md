@@ -64,6 +64,8 @@ zkd verify \
 | `-P`              |       | Path   | Proof input path (for verification)           |
 | `--stats`         |       | Bool   | Print runtime stats JSON                      |
 
+> **Embedding note:** Applications embedding the prover from other languages should see §3 for the C ABI and bindings that mirror these CLI workflows.
+
 ---
 
 ## 2. SDK (Rust)
@@ -111,6 +113,8 @@ pub fn list_backends() -> Vec<BackendInfo>;
 pub fn list_profiles() -> Vec<ProfileInfo>;
 ```
 
+> **Embedding note:** Higher-level bindings in other languages wrap these SDK concepts via the C ABI outlined in §3.
+
 ### 2.3 Error Contracts
 
 ```rust
@@ -137,11 +141,106 @@ Each error implements `Display` and serializes as a JSON object:
 { "error": "CapabilityMismatch", "message": "hash=keccak not supported by plonky2" }
 ```
 
+> **Embedding note:** The same JSON structure is emitted by the FFI boundary when the C ABI functions return fallible results; see §3.
+
 ---
 
-## 3. Backend Adapter Interfaces
+## 3. C ABI & Multi-Language Bindings
 
-### 3.1 Trait Definitions
+The prover exports a stable C ABI so that non-Rust applications can embed the engine via shared libraries. Generated bindings for Node/TypeScript, Python, Go, .NET, Swift/iOS, and WASI map directly onto this surface.
+
+### 3.1 Exported Symbols
+
+| Function | Signature (C) | Description |
+| -------- | ------------- | ----------- |
+| `zkp_init` | `zkp_error* zkp_init(const char* runtime_json, zkp_context** out_ctx);` | Initializes the prover runtime using a UTF-8 JSON configuration. Returns `NULL` on success or an error pointer otherwise. |
+| `zkp_prove` | `zkp_error* zkp_prove(zkp_context* ctx, const char* request_json, zkp_buffer* out_proof);` | Builds traces, runs the selected backend, and writes the proof bytes/statistics into `out_proof`. |
+| `zkp_verify` | `zkp_error* zkp_verify(zkp_context* ctx, const char* request_json, const uint8_t* proof_ptr, size_t proof_len);` | Replays the transcript and verifies the supplied proof blob. |
+| `zkp_list_backends` | `const char* zkp_list_backends(zkp_context* ctx);` | Returns a JSON string describing registered backends and capabilities. Caller frees via `zkp_free`. |
+| `zkp_list_profiles` | `const char* zkp_list_profiles(zkp_context* ctx);` | Returns JSON describing available profiles. |
+| `zkp_version` | `const char* zkp_version(void);` | Returns a static UTF-8 string with semantic version + git hash. |
+| `zkp_set_callback` | `void zkp_set_callback(zkp_context* ctx, zkp_event_cb cb, void* user_data);` | Registers a callback invoked for JSONL progress messages. |
+| `zkp_cancel` | `void zkp_cancel(zkp_context* ctx);` | Requests cancellation of any in-flight proving job. |
+| `zkp_free` | `void zkp_free(const void* ptr);` | Releases memory allocated by the prover (strings, buffers). |
+
+`zkp_buffer` is an opaque struct containing `uint8_t* ptr` + `size_t len`. All UTF-8 parameters use canonical, NUL-terminated `const char*` buffers.
+
+### 3.2 Error Model
+
+All fallible functions return `NULL` on success. Errors are conveyed as heap-allocated UTF-8 JSON strings describing the failure:
+
+```json
+{ "error": "CapabilityMismatch", "message": "hash=keccak not supported by plonky2" }
+```
+
+Bindings unwrap these into native error types. The caller must release the returned pointer via `zkp_free`. Simple status queries such as `zkp_version` return static strings and never allocate.
+
+### 3.3 Memory Management
+
+Memory allocated by the prover (proof buffers, JSON strings, error messages) must be released with `zkp_free`. Host applications must not free these pointers with their language runtime allocators to avoid mismatched heaps. Conversely, buffers owned by the host remain owned by the host.
+
+### 3.4 Event Callbacks
+
+`zkp_set_callback(cb, user_data)` registers a callback receiving newline-delimited JSON messages:
+
+```json
+{ "stage": "prove", "percent": 42, "elapsed_ms": 103 }
+```
+
+The callback executes on internal worker threads. Bindings surface these events as async streams, loggers, or progress hooks. `user_data` is passed through verbatim to facilitate context pointers.
+
+### 3.5 Thread Safety
+
+`zkp_init` returns a thread-safe context. Concurrent calls to `zkp_prove`, `zkp_verify`, `zkp_list_*`, and `zkp_version` are supported as long as each proof invocation uses disjoint `zkp_buffer` outputs. Callback registration is thread-safe but should be performed during initialization to avoid races.
+
+### 3.6 Usage Example
+
+```c
+#include "zkprov.h"
+
+int main(void) {
+    zkp_context* ctx = NULL;
+    if (zkp_init("{\"log_level\":\"info\"}", &ctx)) {
+        fprintf(stderr, "failed to init prover\n");
+        return 1;
+    }
+
+    zkp_buffer proof = {0};
+    const char* err = zkp_prove(ctx, "{\"program\":\"tests/fixtures/toy.air\"}", &proof);
+    if (err) {
+        fprintf(stderr, "%s\n", err);
+        zkp_free(err);
+        return 1;
+    }
+
+    err = zkp_verify(ctx, "{\"program\":\"tests/fixtures/toy.air\"}", proof.ptr, proof.len);
+    if (err) {
+        fprintf(stderr, "%s\n", err);
+        zkp_free(err);
+    }
+
+    zkp_free(proof.ptr);
+    zkp_free(ctx);
+    return err ? 1 : 0;
+}
+```
+
+Language bindings publish ergonomic wrappers around these calls:
+
+* **Node/TypeScript** — N-API addon exposing async `prove()`/`verify()` Promises.
+* **Python** — `ctypes`/`cffi` layer returning `dict` objects and `bytes` buffers.
+* **Go** — `cgo` package returning Go errors and slices.
+* **.NET** — P/Invoke declarations mapping to `SafeHandle` wrappers.
+* **Swift/iOS** — `@_cdecl` shims bridging to Swift classes for mobile apps.
+* **WASI/WebAssembly** — thin JS/Wasm glue calling the same exported functions.
+
+These bindings add runtime-specific ergonomics but stay in lockstep with the C ABI.
+
+---
+
+## 4. Backend Adapter Interfaces
+
+### 4.1 Trait Definitions
 
 ```rust
 pub trait ProverBackend: Send + Sync {
@@ -171,7 +270,7 @@ pub trait VerifierBackend: Send + Sync {
 }
 ```
 
-### 3.2 Capability Structure
+### 4.2 Capability Structure
 
 ```rust
 pub struct Capabilities {
@@ -186,7 +285,7 @@ pub struct Capabilities {
 }
 ```
 
-### 3.3 Registry API
+### 4.3 Registry API
 
 ```rust
 pub struct BackendRegistry;
@@ -197,7 +296,7 @@ impl BackendRegistry {
 }
 ```
 
-### 3.4 BackendInfo Schema (JSON)
+### 4.4 BackendInfo Schema (JSON)
 
 ```json
 {
