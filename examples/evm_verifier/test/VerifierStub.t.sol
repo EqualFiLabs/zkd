@@ -52,4 +52,29 @@ contract VerifierStubTest {
 
         require(computed == expectedDigest, "digest mismatch");
     }
+
+    function testRustEncodedAbiRoundTrips() public {
+        string memory meta = vm.readFile("testdata/meta.json");
+        uint64 expectedBackendId = abi.decode(vm.parseJson(meta, ".backendId"), (uint64));
+        uint64 expectedProfileId = abi.decode(vm.parseJson(meta, ".profileId"), (uint64));
+        uint64 expectedPubioHash = abi.decode(vm.parseJson(meta, ".pubioHash"), (uint64));
+        uint64 expectedBodyLen = abi.decode(vm.parseJson(meta, ".bodyLen"), (uint64));
+
+        bytes memory body = vm.readFileBinary("testdata/body.bin");
+
+        bytes memory metaAbi = vm.readFileBinary("testdata/meta.abi");
+        (uint64 backendId, uint64 profileId, uint64 pubioHash, uint64 bodyLen) = abi.decode(
+            metaAbi,
+            (uint64, uint64, uint64, uint64)
+        );
+
+        require(backendId == expectedBackendId, "backendId mismatch");
+        require(profileId == expectedProfileId, "profileId mismatch");
+        require(pubioHash == expectedPubioHash, "pubioHash mismatch");
+        require(bodyLen == expectedBodyLen, "bodyLen mismatch");
+
+        bytes memory bodyAbi = vm.readFileBinary("testdata/body.abi");
+        bytes memory decodedBody = abi.decode(bodyAbi, (bytes));
+        require(keccak256(decodedBody) == keccak256(body), "body mismatch");
+    }
 }
