@@ -3,7 +3,8 @@ members = [
   "crates/corelib",
   "crates/backends/native",
   "crates/ffi-c",
-  "crates/cli"
+  "crates/cli",
+  "crates/bundles"
 ]
 resolver = "2"
 

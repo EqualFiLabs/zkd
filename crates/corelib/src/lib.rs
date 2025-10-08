@@ -1,6 +1,9 @@
 //! Core library: registry, profiles, and top-level APIs used by CLI/FFI.
 
 pub mod air;
+pub mod air_bindings {
+    pub use crate::air::bindings::*;
+}
 pub mod backend;
 pub mod config;
 pub mod crypto;

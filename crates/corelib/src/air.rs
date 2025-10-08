@@ -1,5 +1,7 @@
 //! AIR-IR: minimal, backend-neutral representation + TOML parser.
 
+pub mod bindings;
+
 use anyhow::{anyhow, Context, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};

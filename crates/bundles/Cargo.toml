@@ -1,0 +1,17 @@
+[package]
+name = "zkprov-bundles"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+anyhow = "1.0.86"
+serde = { version = "1.0", features = ["derive"] }
+zkprov-corelib = { path = "../corelib" }
+
+[dev-dependencies]
+toml = "0.8"
+
+[[test]]
+name = "privacy_gadgets"
+path = "../../tests/privacy_gadgets.rs"
