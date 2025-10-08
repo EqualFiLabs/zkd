@@ -13,6 +13,14 @@ fn keccak_empty_matches_vector() {
 }
 
 #[test]
+fn keccak_abc_matches_vector() {
+    let digest = keccak256_bytes(b"abc");
+    let expected =
+        hex::decode("4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45").unwrap();
+    assert_eq!(digest.as_slice(), expected.as_slice());
+}
+
+#[test]
 fn abi_round_trip_meta_and_body() {
     let header = ProofHeader {
         backend_id_hash: 42,

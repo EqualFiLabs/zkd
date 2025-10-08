@@ -44,15 +44,11 @@ pub fn decode_meta(data: &[u8]) -> Result<ProofHeader> {
 }
 
 pub fn encode_body(body: &[u8]) -> Vec<u8> {
-    let body = EvmProofBody {
-        data: body.to_vec().into(),
-    };
     body.abi_encode()
 }
 
 pub fn decode_body(data: &[u8]) -> Result<Vec<u8>> {
-    let decoded = <EvmProofBody as SolType>::abi_decode(data, true)?;
-    Ok(decoded.data.to_vec())
+    <Vec<u8> as SolValue>::abi_decode(data, true).map_err(|e| anyhow!(e))
 }
 
 pub fn encode_public_io(json: &str) -> Vec<u8> {

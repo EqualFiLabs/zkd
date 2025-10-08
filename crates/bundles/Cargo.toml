@@ -8,6 +8,8 @@ license = "MIT"
 anyhow = "1.0.86"
 serde = { version = "1.0", features = ["derive"] }
 zkprov-corelib = { path = "../corelib" }
+zkprov-backend-native = { path = "../backends/native" }
+serde_json = "1.0.127"
 
 [dev-dependencies]
 toml = "0.8"
@@ -15,3 +17,7 @@ toml = "0.8"
 [[test]]
 name = "privacy_gadgets"
 path = "../../tests/privacy_gadgets.rs"
+
+[[test]]
+name = "evm_interop"
+path = "../../tests/evm_interop.rs"
