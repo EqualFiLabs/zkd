@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -92,6 +93,19 @@ fn evm_end_to_end_parity() -> Result<()> {
         let path = dir.join(name);
         let metadata = fs::metadata(&path).with_context(|| format!("metadata for {:?}", path))?;
         anyhow::ensure!(metadata.len() > 0, "fixture {:?} should not be empty", path);
+    }
+
+    match Command::new("forge").arg("--version").status() {
+        Ok(status) => {
+            anyhow::ensure!(status.success(), "`forge --version` failed: {status}");
+        }
+        Err(err) => {
+            if err.kind() == ErrorKind::NotFound {
+                eprintln!("skipping evm_end_to_end_parity because forge is not installed");
+                return Ok(());
+            }
+            return Err(err).context("checking forge availability");
+        }
     }
 
     let status = Command::new("forge")
