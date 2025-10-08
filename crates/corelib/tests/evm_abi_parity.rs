@@ -50,7 +50,10 @@ fn evm_abi_round_trip_matches_fixtures() -> Result<()> {
     fs::write(dir.join("body.abi"), &body_bytes)?;
 
     let decoded_header = decode_meta(&meta_bytes)?;
-    assert_eq!(decoded_header, header, "decoded meta must match source header");
+    assert_eq!(
+        decoded_header, header,
+        "decoded meta must match source header"
+    );
 
     let decoded_body = decode_body(&body_bytes)?;
     assert_eq!(decoded_body, body, "decoded body must match fixture body");

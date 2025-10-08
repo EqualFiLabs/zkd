@@ -18,10 +18,17 @@ fn evm_digest_matches_native_proof() {
 
     let header = ProofHeader::decode(&proof[0..40]).expect("decode header");
     let body = &proof[40..];
-    assert_eq!(body.len() as u64, header.body_len, "header body length mismatch");
+    assert_eq!(
+        body.len() as u64,
+        header.body_len,
+        "header body length mismatch"
+    );
 
     let digest = digest_D(&header, body);
-    let digest_hex = digest.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+    let digest_hex = digest
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>();
 
     let testdata_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")

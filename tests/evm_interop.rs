@@ -13,11 +13,16 @@ use zkprov_corelib::evm::{
 use zkprov_corelib::proof::ProofHeader;
 
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
 }
 
 fn toy_air_path() -> Result<String> {
-    let path = workspace_root().join("examples").join("air").join("toy.air");
+    let path = workspace_root()
+        .join("examples")
+        .join("air")
+        .join("toy.air");
     path.to_str()
         .map(|s| s.to_owned())
         .context("toy.air path must be valid UTF-8")
@@ -43,7 +48,10 @@ fn proof_header_and_body() -> Result<(ProofHeader, Vec<u8>)> {
 }
 
 fn write_hex(path: &Path, data: &[u8]) -> Result<()> {
-    let hex = data.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+    let hex = data
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>();
     fs::write(path, format!("{}\n", hex)).context("write hex")
 }
 
@@ -61,8 +69,11 @@ fn evm_end_to_end_parity() -> Result<()> {
         "pubioHash": header.pubio_hash,
         "bodyLen": header.body_len,
     });
-    fs::write(dir.join("meta.json"), format!("{}\n", serde_json::to_string_pretty(&meta_json)?))
-        .context("write meta.json")?;
+    fs::write(
+        dir.join("meta.json"),
+        format!("{}\n", serde_json::to_string_pretty(&meta_json)?),
+    )
+    .context("write meta.json")?;
     fs::write(dir.join("body.bin"), &body).context("write body.bin")?;
     write_hex(&dir.join("digest.hex"), &digest)?;
 
@@ -71,7 +82,13 @@ fn evm_end_to_end_parity() -> Result<()> {
     fs::write(dir.join("meta.abi"), &meta_abi).context("write meta.abi")?;
     fs::write(dir.join("body.abi"), &body_abi).context("write body.abi")?;
 
-    for name in ["meta.json", "body.bin", "digest.hex", "meta.abi", "body.abi"] {
+    for name in [
+        "meta.json",
+        "body.bin",
+        "digest.hex",
+        "meta.abi",
+        "body.abi",
+    ] {
         let path = dir.join(name);
         let metadata = fs::metadata(&path).with_context(|| format!("metadata for {:?}", path))?;
         anyhow::ensure!(metadata.len() > 0, "fixture {:?} should not be empty", path);
