@@ -226,6 +226,12 @@ pub extern "C" fn zkp_init() -> i32 {
     to_i32(init_runtime())
 }
 
+/// # Safety
+///
+/// - `out_json` must point to valid, writable memory where a pointer to a newly
+///   allocated, null-terminated string can be stored.
+/// - The caller is responsible for freeing the returned string with
+///   [`zkp_free_string`](crate::zkp_free_string).
 #[no_mangle]
 pub unsafe extern "C" fn zkp_list_backends(out_json: *mut *mut c_char) -> i32 {
     to_i32((|| {
@@ -241,6 +247,12 @@ pub unsafe extern "C" fn zkp_list_backends(out_json: *mut *mut c_char) -> i32 {
     })())
 }
 
+/// # Safety
+///
+/// - `out_json` must point to valid, writable memory where a pointer to a newly
+///   allocated, null-terminated string can be stored.
+/// - The caller is responsible for freeing the returned string with
+///   [`zkp_free_string`](crate::zkp_free_string).
 #[no_mangle]
 pub unsafe extern "C" fn zkp_list_profiles(out_json: *mut *mut c_char) -> i32 {
     to_i32((|| {
@@ -256,6 +268,15 @@ pub unsafe extern "C" fn zkp_list_profiles(out_json: *mut *mut c_char) -> i32 {
     })())
 }
 
+/// # Safety
+///
+/// - All pointer arguments must be valid for reads of a null-terminated string
+///   (for `*_id`, `air_path`, and `public_inputs_json`).
+/// - `out_proof`, `out_proof_len`, and `out_json_meta` must be valid, writable
+///   pointers where this function can store ownership of newly allocated
+///   buffers.
+/// - The caller is responsible for eventually releasing any allocations via the
+///   corresponding `zkp_free_*` helpers.
 #[allow(clippy::too_many_arguments)]
 #[no_mangle]
 pub unsafe extern "C" fn zkp_prove(
@@ -318,6 +339,15 @@ pub unsafe extern "C" fn zkp_prove(
     })())
 }
 
+/// # Safety
+///
+/// - All pointer arguments must be valid for reads of a null-terminated string
+///   (for `*_id`, `air_path`, and `public_inputs_json`).
+/// - When `proof_len` is non-zero, `proof_ptr` must reference a buffer of at
+///   least `proof_len` bytes.
+/// - `out_json_meta` must be a valid, writable pointer where this function can
+///   store ownership of a newly allocated string. The caller is responsible for
+///   freeing it with [`zkp_free_string`](crate::zkp_free_string).
 #[allow(clippy::too_many_arguments)]
 #[no_mangle]
 pub unsafe extern "C" fn zkp_verify(
