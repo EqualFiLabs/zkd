@@ -8,6 +8,10 @@
  *   - Linux and Android ship libzkprov as a shared object (libzkprov.so).
  *   - macOS ships libzkprov as a dynamic library (libzkprov.dylib).
  *   - Android distributions embed the .so inside the application package.
+ *
+ * Thread-safety: the exported functions are re-entrant, but the prover runtime
+ * maintains global trackers that are not synchronized. Callers must
+ * synchronize access if those trackers are shared across threads.
  */
 
 #ifdef __cplusplus
@@ -35,7 +39,8 @@ int32_t zkp_init(void);
  *
  * On success, *out_json receives a heap-allocated, NUL-terminated UTF-8 string
  * owned by the prover runtime. The caller must release any non-NULL pointer
- * stored in *out_json via zkp_free when it is no longer needed.
+ * stored in *out_json via zkp_free when it is no longer needed. On failure,
+ * *out_json is set to NULL.
  */
 int32_t zkp_list_backends(char **out_json);
 
@@ -44,7 +49,8 @@ int32_t zkp_list_backends(char **out_json);
  *
  * On success, *out_json receives a heap-allocated, NUL-terminated UTF-8 string
  * owned by the prover runtime. The caller must release any non-NULL pointer
- * stored in *out_json via zkp_free when it is no longer needed.
+ * stored in *out_json via zkp_free when it is no longer needed. On failure,
+ * *out_json is set to NULL.
  */
 int32_t zkp_list_profiles(char **out_json);
 
@@ -53,13 +59,14 @@ int32_t zkp_list_profiles(char **out_json);
  *
  * Parameters and ownership rules:
  *   - backend_id, field, hash_id, profile_id, air_path, and public_inputs_json
- *     must point to caller-owned, NUL-terminated UTF-8 strings.
+ *     must point to caller-owned, non-empty, NUL-terminated UTF-8 strings.
  *   - On success, *out_proof receives a heap-allocated buffer containing the
  *     proof bytes and *out_proof_len receives its length in bytes. The caller
- *     owns *out_proof and must release any non-NULL value with zkp_free.
+ *     owns *out_proof and must release any non-NULL value with zkp_free. On
+ *     failure, *out_proof is set to NULL and *out_proof_len to 0.
  *   - On success, *out_json_meta receives a heap-allocated, NUL-terminated
  *     UTF-8 string describing the proof metadata. The caller must release any
- *     non-NULL value with zkp_free.
+ *     non-NULL value with zkp_free. On failure, *out_json_meta is set to NULL.
  */
 int32_t zkp_prove(
     const char *backend_id,
@@ -80,7 +87,7 @@ int32_t zkp_prove(
  * Parameters and ownership rules mirror zkp_prove. The proof_ptr/proof_len pair
  * must reference caller-owned proof bytes. On success, *out_json_meta receives a
  * heap-allocated, NUL-terminated UTF-8 string that the caller must free with
- * zkp_free when finished.
+ * zkp_free when finished. On failure, *out_json_meta is set to NULL.
  */
 int32_t zkp_verify(
     const char *backend_id,
@@ -104,7 +111,8 @@ void *zkp_alloc(uint64_t nbytes);
 /**
  * Release memory previously allocated by the prover runtime. Passing NULL is a
  * no-op. Call this for every non-NULL pointer returned directly by the API or
- * written into an out-parameter by the API.
+ * written into an out-parameter by the API. Only pass pointers that originated
+ * from this FFI; freeing foreign pointers is undefined behavior.
  */
 void zkp_free(void *ptr);
 

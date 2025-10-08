@@ -119,8 +119,11 @@ fn read_cstring(ptr: *const c_char) -> FfiResult<String> {
         return Err(ErrorCode::InvalidArg);
     }
     unsafe {
-        CStr::from_ptr(ptr)
-            .to_str()
+        let cstr = CStr::from_ptr(ptr);
+        if cstr.to_bytes().is_empty() {
+            return Err(ErrorCode::InvalidArg);
+        }
+        cstr.to_str()
             .map(|s| s.to_owned())
             .map_err(|_| ErrorCode::InvalidArg)
     }
