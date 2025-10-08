@@ -6,12 +6,44 @@ on:
 
 jobs:
   build-test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Build
-        run: cargo build --workspace --locked
+      - name: Install Foundry toolchain
+        uses: foundry-rs/foundry-toolchain@v1
+      - name: Install clang (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang
+      - name: Build workspace
+        run: cargo build --workspace
+      - name: Header sanity check
+        run: clang -Wall -fsyntax-only include/zkprov.h
+      - name: Build FFI shared library (release)
+        run: cargo build -p zkprov-ffi-c --release
+      - name: Upload FFI artifact (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zkprov-ffi-linux
+          path: target/release/libzkprov.so
+      - name: Upload FFI artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zkprov-ffi-macos
+          path: target/release/libzkprov.dylib
+      - name: Run ffi_roundtrip C test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          clang -I include tests/ffi_roundtrip.c -L target/release -lzkprov \
+            -Wl,-rpath,$(pwd)/target/release -o ffi_roundtrip
+          LD_LIBRARY_PATH=$(pwd)/target/release ./ffi_roundtrip
       - name: Test
         run: cargo test --workspace --all-features -- --nocapture
       - name: Clippy

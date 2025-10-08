@@ -6,7 +6,17 @@ license = "MIT"
 
 [dependencies]
 anyhow = { workspace = true }
+blake3 = { workspace = true }
 once_cell = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+toml = "0.8.19"
+regex = "1.10.6"
+tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak"] }
+num-bigint = "0.4.6"
+num-traits = "0.2.19"
+alloy-sol-types = "0.7"
+
+[dev-dependencies]
+zkprov-backend-native = { path = "../backends/native" }

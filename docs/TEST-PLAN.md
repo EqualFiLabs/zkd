@@ -26,6 +26,8 @@ This plan defines the **unit**, **integration**, **cross-backend**, **negative**
 * **CPU Features:** AVX2 preferred (falls back if unavailable)
 * **Profiles under test:** `dev-fast`, `balanced`, `secure`
 * **Backends under test (Phase 0):** `native`, `winterfell@0.6`
+* **Language runtimes:** Node.js LTS (18/20), Python 3.10+, Go 1.20+, .NET 6+, Swift 5.8+, WASI runtime (wasmtime ≥ 15)
+* **Shared libraries:** Prebuilt `libzkprov` artifacts for Linux (x86_64, aarch64), macOS (universal), Windows (MSVC) plus `.wasm` for WASI
 
 ---
 
@@ -37,19 +39,26 @@ This plan defines the **unit**, **integration**, **cross-backend**, **negative**
     algebra_*.rs
     crypto_merkle.rs
     crypto_transcript.rs
+    crypto_pedersen.rs
+    crypto_keccak.rs
     fri_*.rs
     air_ir_{parser,degree}.rs
     public_io_{encode,bind}.rs
+    gadget_range.rs
   /integration
     e2e_toy_air.rs
     e2e_merkle.rs
     e2e_running_sum.rs
+    e2e_commitment.rs
   /cross_backend
     parity_roots.rs
   /negative
     bad_config.rs
     tamper_proof.rs
     wrong_inputs.rs
+    invalid_curve.rs
+    blinding_reuse.rs
+    range_overflow.rs
   /fuzz
     transcript_roundtrip.rs
     fri_params.rs
@@ -57,6 +66,11 @@ This plan defines the **unit**, **integration**, **cross-backend**, **negative**
     program.hash
     inputs.json
     roots.json
+  /fixtures
+    pedersen.air
+    pedersen_inputs.json
+    rangecheck.air
+    keccak.air
 /scripts
   run_bench.sh
 ```
@@ -102,6 +116,12 @@ Generation rule: write once under `tests/golden_vectors/`; tests verify equality
 
   * Domain separation tags (`PROG`,`BUND`,`PUBI`).
   * Public input absorption order and deterministic seed.
+* **`crypto_pedersen.rs`**
+
+  * Tests group operations, on-curve checks, and Pedersen commitment determinism.
+* **`crypto_keccak.rs`**
+
+  * Compares Rust implementation outputs to official Keccak test vectors.
 
 ### 5.3 FRI / LDT
 
@@ -128,6 +148,10 @@ Generation rule: write once under `tests/golden_vectors/`; tests verify equality
 * **`public_io_encode.rs`**
 
   * Scalar/Vector/Bytes canonical encodings; JSON stability.
+
+### 5.6 Range Gadgets
+
+* **`gadget_range.rs`** — asserts proper enforcement of value bounds.
 
 ---
 
@@ -199,6 +223,14 @@ Failure raises `CrossBackendDrift` (see `validation.md` §11).
 
   * Non-power-of-two length → `InvalidTraceLength`.
 
+| Test                     | Expected Error           |
+| ------------------------ | ------------------------ |
+| Invalid curve point      | `InvalidCurvePoint`      |
+| Blinding reuse           | `BlindingReuse`          |
+| Range overflow           | `RangeCheckOverflow`     |
+| Backend missing pedersen | `PedersenConfigMismatch` |
+| Backend missing keccak   | `KeccakUnavailable`      |
+
 All negative tests must **abort** and log structured JSON errors per `interfaces.md`.
 
 ---
@@ -234,6 +266,10 @@ Script: `/scripts/run_bench.sh`
 | toy     | 2¹⁴  | 0.2–1.0 s              | ≤ 128 MB     |
 | merkle  | 2¹⁶  | 0.6–2.5 s              | ≤ 256 MB     |
 | runsum  | 2¹⁶  | 0.8–3.0 s              | ≤ 320 MB     |
+
+| Program  | Expected time (balanced) | Notes                                                  |
+| -------- | ------------------------ | ------------------------------------------------------ |
+| pedersen | 1–3 s                    | Includes group ops; validate mobile profile throttling |
 
 Outliers > 3× baseline → `PerformanceAnomaly` (non-fatal) recorded in `ValidationReport`.
 
@@ -287,6 +323,7 @@ Exit code must be `0`.
 Every test that performs a prove/verify must emit a `ValidationReport` to `reports/validation-*.json` and assert:
 
 * `config_passed && air_passed && runtime_passed && verifier_passed == true`
+* `commit_passed == true`
 * `issues.is_empty()` for positive tests
 * Specific codes set for negative tests (`ConstraintUnsatisfied`, `TranscriptMismatch`, etc.)
 
@@ -294,7 +331,24 @@ See `validation.md` for report schema.
 
 ---
 
-## 15) CI Matrix & Gates
+## 15) FFI & Multi-Language Tests
+
+* **C harness round-trip:** Build and run `tests/ffi/c_roundtrip.c` against `libzkprov` to call `zkp_init`, `zkp_prove`, and `zkp_verify` on toy and merkle fixtures; assert return codes are `NULL` and free all pointers via `zkp_free`.
+* **Node/TypeScript binding test:** Execute the N-API addon’s jest/tap suite to prove and verify the toy AIR asynchronously; compare digests with CLI fixtures.
+* **Python binding test:** Use `pytest` with `ctypes`/`cffi` wrapper to call the shared library, deserialize JSON responses, and ensure proof buffers are freed explicitly.
+* **Go binding test:** Run `go test ./bindings/go/...` to compile the cgo wrapper and prove/verify toy + merkle programs.
+* **.NET binding test:** Execute `dotnet test` for the P/Invoke wrapper, ensuring `SafeHandle` disposes buffers.
+* **Swift/iOS test:** Build the Swift Package Example (macOS + iOS simulator) verifying a recursive proof via the Swift binding.
+* **WASI/WebAssembly test:** Run `wasmtime` against the wasm binding to confirm `zkp_verify` passes for the toy fixture in a WASI sandbox.
+* **Cross-language parity:** Generate a proof through the CLI/SDK and verify it in each binding (and vice versa) asserting identical `D` digests and seeds.
+* **Memory leak checks:** Run Valgrind (Linux), Instruments (macOS), and `dotnet-counters` to ensure repeated FFI calls do not leak when `zkp_free` is used.
+* **Callback test:** Register an event callback from each binding, run a proof, and assert receipt of progress JSONL messages with monotonically increasing `percent`.
+
+All bindings publish CI jobs that build language packages, link against the shipped `libzkprov` artifacts, and upload logs/artifacts mirroring CLI/SDK tests.
+
+---
+
+## 16) CI Matrix & Gates
 
 **Matrix**
 
@@ -314,7 +368,7 @@ This satisfies the PPP execution & iteration flow with passing test suite and cl
 
 ---
 
-## 16) Acceptance Criteria (MVP)
+## 17) Acceptance Criteria (MVP)
 
 * [ ] **Unit**: Algebra, Merkle, Transcript, FRI, AIR-IR, Public I/O all green
 * [ ] **Integration**: toy/merkle/runsum prove & verify on `native` and `winterfell`
@@ -323,11 +377,12 @@ This satisfies the PPP execution & iteration flow with passing test suite and cl
 * [ ] **Fuzz**: no panics; rejects invalid FRI ranges; parser stable
 * [ ] **Performance**: within expected ranges; no OOM
 * [ ] **Determinism**: identical seeds/headers across runs and hosts
+* [ ] **FFI**: C ABI + Node/TS, Python, Go, .NET, Swift, WASI bindings pass round-trip and parity tests across supported OSes
 * [ ] **CI Gates**: matrix passes; coverage thresholds met
 
 ---
 
-## 17) Expansion (Phase 2+)
+## 18) Expansion (Phase 2+)
 
 * Add Plonky2/3 to matrix; enable recursion tests (stark-in-stark).
 * Add GPU kernels to bench matrix.
@@ -336,7 +391,7 @@ This satisfies the PPP execution & iteration flow with passing test suite and cl
 
 ---
 
-## 18) Rationale
+## 19) Rationale
 
 This plan enforces the PPP principle of **tight, implementation-ready specs** with explicit success conditions and reproducible commands. It keeps tests atomic (1–2 hours when run locally in subsets) and ties results to deterministic artifacts and golden vectors. 
 

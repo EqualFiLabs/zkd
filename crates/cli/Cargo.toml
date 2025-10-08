@@ -10,3 +10,7 @@ clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 zkprov-corelib = { path = "../corelib" }
+zkprov-backend-native = { path = "../backends/native" }
+
+[dev-dependencies]
+tempfile = "3.10.1"

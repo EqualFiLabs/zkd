@@ -1,2 +1,6 @@
 id = "secure"
 lambda_bits = 120
+fri_blowup  = 32
+fri_queries = 50
+grind_bits  = 20
+merkle_arity = 2

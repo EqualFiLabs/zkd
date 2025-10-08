@@ -20,6 +20,7 @@ Version 0.2 introduces the **Backend Adapter Layer**, enabling portable proofs a
 | **Verifier Engine**  | Reconstructs transcript and verifies proof deterministically.              |
 | **Bundle Author**    | Creates reusable sub-AIR gadgets with typed ports and degree bounds.       |
 | **Backend Adapter**  | Translates AIR-IR into backend-specific API (Winterfell, Plonky2/3, etc.). |
+| **Binding Maintainer** | Keeps language bindings in sync with the C ABI; ships Node/TS, Python, Go, .NET, Swift, WASI packages. |
 | **Profile Registry** | Maintains security parameter presets (dev, balanced, secure).              |
 
 ---
@@ -152,6 +153,7 @@ Output: `verified: bool`.
 | --------------- | ------------- | --------------------------------------------------------------------------------- |
 | CLI             | User ↔ Engine | `zkd prove -p program.air -i inputs.json --backend winterfell --profile balanced` |
 | Rust SDK        | Library       | `prove(program, trace, pub_in, profile, backend)` / `verify(...)`                 |
+| **C ABI & FFI** | Language ↔ Engine | `zkp_init()`, `zkp_prove(cfg)`, `zkp_verify(...)` etc.; wrapped by Node/TS, Python, Go, .NET, Swift, WASI bindings |
 | Backend Trait   | Internal      | `ProverBackend` / `VerifierBackend`                                               |
 | Config Schema   | JSON/TOML     | validated params (field, hash, profile, backend)                                  |
 | Bundle Registry | File/Dir      | `*.bundle` describing ports + generator                                           |
@@ -183,13 +185,55 @@ Bundle namespaces: `bundle::{name}@{hash(code)}`.
 
 ## 9. Public Inputs / Data Binding
 
-AIR defines `PublicDecl`s.
+AIR defines how user data binds into the algebraic trace.
 
-* `LiftAsConstCols`: injected as read-only CONST columns.
-* `Absorb`: hashed into transcript pre-challenge.
-  Canonical encoding (field LE or fixed bytes) shared across backends.
-  Verifier must mirror absorb order.
-  Public outputs (optional) re-computed for equivalence.
+Each `PublicDecl` can now specify a binding type:
+
+| Binding | Description | Visibility |
+| -------- | ------------ | -------- |
+| `LiftAsConstCols` | Injects a constant vector into the trace | Public |
+| `Absorb` | Hashed directly into the transcript | Public |
+| `Pedersen(curve)` | Commits to hidden value `v` with blinding `r`; AIR enforces `C = v·H + r·G` | Public (Cx,Cy) |
+| `PoseidonCommit` | Hash-based commitment for cheap hiding | Public scalar |
+| `KeccakCommit` | Keccak256-based commitment for EVM interop | Public scalar |
+
+Witness values that correspond to commitments (`v`, `r`) remain private.
+All commitments are encoded deterministically, curve-checked, and bound to the proof transcript.
+
+---
+
+### 9.1 Pre-Baked Application Profiles
+
+To accelerate developer adoption, the prover includes a library of **pre-baked application profiles**.
+Each profile combines an AIR circuit with a declarative manifest of public inputs, gadgets, and limits, enabling developers to integrate common ZK workflows without writing AIR code.
+
+Profiles are loaded via `zkd profile ls` or through the SDK:
+
+```ts
+import { prove } from "@zkd/sdk";
+prove({ profile_id: "zk-auth-pedersen-secret", public_inputs: { C, nonce, origin } });
+```
+
+Each profile is:
+
+* **Deterministic:** identical digest `D` across backends and bindings.
+* **Composable:** gadgets and parameters editable for advanced users.
+* **Documented:** manifests published in `profile-catalog.md`.
+
+Initial profiles:
+
+1. `zk-auth-pedersen-secret` — passwordless secret authentication
+2. `zk-allowlist-merkle` — allowlist membership with replay protection
+3. `zk-attr-range` — attribute range proof
+4. `zk-balance-geq` — balance ≥ threshold attest
+5. `zk-uniqueness-nullifier` — one-use nullifier per epoch
+6. `zk-proof-of-solvency-lite` — assets vs liabilities delta commitment
+7. `zk-vote-private` — private ballot from allowlist
+8. `zk-file-hash-inclusion` — document inclusion proof
+9. `zk-score-threshold` — reputation/score ≥ threshold
+10. `zk-age-over` — mobile-optimized age gate
+
+These adhere to the same validation, commitment, and digest-binding rules defined elsewhere in this RFC.
 
 ---
 
@@ -215,12 +259,22 @@ All events logged JSONL + stdout.
 ## 12. Security & Privacy Considerations
 
 * **Soundness:** Each backend must guarantee λ ≥ declared target.
-* **Determinism:** Transcripts stable given same backend + profile.
+* **Determinism:** Transcripts stable given same backend + profile across CLI, SDK, and FFI bindings.
 * **Integrity:** Merkle and FRI commitments binding.
 * **Cross-backend parity:** Equivalent AIR + public inputs → proof verifies on all backends supporting same field/hash.
-* **Isolation:** Adapters sandboxed; no network I/O during prove/verify.
+* **Isolation:** Adapters sandboxed; no network I/O during prove/verify. FFI bindings must propagate validation results without mutating proof bytes.
 * **Side Channels:** Constant-time field ops in secure profile.
 * **Versioning:** Program hash includes backend id to prevent mismatched proof reuse.
+
+FFI bindings are required to forward `ValidationReport` objects and structured errors without alteration so that determinism and security guarantees hold independent of the host language.
+
+### 12.1 Privacy & Commitment Security
+
+* **Hiding:** Pedersen and Poseidon commitments hide the numeric witness; `r` must be sampled fresh per commitment.
+* **Binding:** Each commitment is enforced by AIR constraints; reusing a blinding scalar triggers `BlindingReuse`.
+* **Range Checking:** Range bundles ensure committed values fall within declared bit-widths.
+* **EVM Compatibility:** `KeccakCommit` uses canonical Keccak256 encoding for digest parity with Solidity.
+* **Isolation:** All commitment gadgets execute deterministically and offline; no randomness or external I/O.
 
 ---
 

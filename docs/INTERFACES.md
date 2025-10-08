@@ -64,6 +64,8 @@ zkd verify \
 | `-P`              |       | Path   | Proof input path (for verification)           |
 | `--stats`         |       | Bool   | Print runtime stats JSON                      |
 
+> **Embedding note:** Applications embedding the prover from other languages should see §3 for the C ABI and bindings that mirror these CLI workflows.
+
 ---
 
 ## 2. SDK (Rust)
@@ -111,6 +113,8 @@ pub fn list_backends() -> Vec<BackendInfo>;
 pub fn list_profiles() -> Vec<ProfileInfo>;
 ```
 
+> **Embedding note:** Higher-level bindings in other languages wrap these SDK concepts via the C ABI outlined in §3.
+
 ### 2.3 Error Contracts
 
 ```rust
@@ -137,11 +141,106 @@ Each error implements `Display` and serializes as a JSON object:
 { "error": "CapabilityMismatch", "message": "hash=keccak not supported by plonky2" }
 ```
 
+> **Embedding note:** The same JSON structure is emitted by the FFI boundary when the C ABI functions return fallible results; see §3.
+
 ---
 
-## 3. Backend Adapter Interfaces
+## 3. C ABI & Multi-Language Bindings
 
-### 3.1 Trait Definitions
+The prover exports a stable C ABI so that non-Rust applications can embed the engine via shared libraries. Generated bindings for Node/TypeScript, Python, Go, .NET, Swift/iOS, and WASI map directly onto this surface.
+
+### 3.1 Exported Symbols
+
+| Function | Signature (C) | Description |
+| -------- | ------------- | ----------- |
+| `zkp_init` | `zkp_error* zkp_init(const char* runtime_json, zkp_context** out_ctx);` | Initializes the prover runtime using a UTF-8 JSON configuration. Returns `NULL` on success or an error pointer otherwise. |
+| `zkp_prove` | `zkp_error* zkp_prove(zkp_context* ctx, const char* request_json, zkp_buffer* out_proof);` | Builds traces, runs the selected backend, and writes the proof bytes/statistics into `out_proof`. |
+| `zkp_verify` | `zkp_error* zkp_verify(zkp_context* ctx, const char* request_json, const uint8_t* proof_ptr, size_t proof_len);` | Replays the transcript and verifies the supplied proof blob. |
+| `zkp_list_backends` | `const char* zkp_list_backends(zkp_context* ctx);` | Returns a JSON string describing registered backends and capabilities. Caller frees via `zkp_free`. |
+| `zkp_list_profiles` | `const char* zkp_list_profiles(zkp_context* ctx);` | Returns JSON describing available profiles. |
+| `zkp_version` | `const char* zkp_version(void);` | Returns a static UTF-8 string with semantic version + git hash. |
+| `zkp_set_callback` | `void zkp_set_callback(zkp_context* ctx, zkp_event_cb cb, void* user_data);` | Registers a callback invoked for JSONL progress messages. |
+| `zkp_cancel` | `void zkp_cancel(zkp_context* ctx);` | Requests cancellation of any in-flight proving job. |
+| `zkp_free` | `void zkp_free(const void* ptr);` | Releases memory allocated by the prover (strings, buffers). |
+
+`zkp_buffer` is an opaque struct containing `uint8_t* ptr` + `size_t len`. All UTF-8 parameters use canonical, NUL-terminated `const char*` buffers.
+
+### 3.2 Error Model
+
+All fallible functions return `NULL` on success. Errors are conveyed as heap-allocated UTF-8 JSON strings describing the failure:
+
+```json
+{ "error": "CapabilityMismatch", "message": "hash=keccak not supported by plonky2" }
+```
+
+Bindings unwrap these into native error types. The caller must release the returned pointer via `zkp_free`. Simple status queries such as `zkp_version` return static strings and never allocate.
+
+### 3.3 Memory Management
+
+Memory allocated by the prover (proof buffers, JSON strings, error messages) must be released with `zkp_free`. Host applications must not free these pointers with their language runtime allocators to avoid mismatched heaps. Conversely, buffers owned by the host remain owned by the host.
+
+### 3.4 Event Callbacks
+
+`zkp_set_callback(cb, user_data)` registers a callback receiving newline-delimited JSON messages:
+
+```json
+{ "stage": "prove", "percent": 42, "elapsed_ms": 103 }
+```
+
+The callback executes on internal worker threads. Bindings surface these events as async streams, loggers, or progress hooks. `user_data` is passed through verbatim to facilitate context pointers.
+
+### 3.5 Thread Safety
+
+`zkp_init` returns a thread-safe context. Concurrent calls to `zkp_prove`, `zkp_verify`, `zkp_list_*`, and `zkp_version` are supported as long as each proof invocation uses disjoint `zkp_buffer` outputs. Callback registration is thread-safe but should be performed during initialization to avoid races.
+
+### 3.6 Usage Example
+
+```c
+#include "zkprov.h"
+
+int main(void) {
+    zkp_context* ctx = NULL;
+    if (zkp_init("{\"log_level\":\"info\"}", &ctx)) {
+        fprintf(stderr, "failed to init prover\n");
+        return 1;
+    }
+
+    zkp_buffer proof = {0};
+    const char* err = zkp_prove(ctx, "{\"program\":\"tests/fixtures/toy.air\"}", &proof);
+    if (err) {
+        fprintf(stderr, "%s\n", err);
+        zkp_free(err);
+        return 1;
+    }
+
+    err = zkp_verify(ctx, "{\"program\":\"tests/fixtures/toy.air\"}", proof.ptr, proof.len);
+    if (err) {
+        fprintf(stderr, "%s\n", err);
+        zkp_free(err);
+    }
+
+    zkp_free(proof.ptr);
+    zkp_free(ctx);
+    return err ? 1 : 0;
+}
+```
+
+Language bindings publish ergonomic wrappers around these calls:
+
+* **Node/TypeScript** — N-API addon exposing async `prove()`/`verify()` Promises.
+* **Python** — `ctypes`/`cffi` layer returning `dict` objects and `bytes` buffers.
+* **Go** — `cgo` package returning Go errors and slices.
+* **.NET** — P/Invoke declarations mapping to `SafeHandle` wrappers.
+* **Swift/iOS** — `@_cdecl` shims bridging to Swift classes for mobile apps.
+* **WASI/WebAssembly** — thin JS/Wasm glue calling the same exported functions.
+
+These bindings add runtime-specific ergonomics but stay in lockstep with the C ABI.
+
+---
+
+## 4. Backend Adapter Interfaces
+
+### 4.1 Trait Definitions
 
 ```rust
 pub trait ProverBackend: Send + Sync {
@@ -171,7 +270,7 @@ pub trait VerifierBackend: Send + Sync {
 }
 ```
 
-### 3.2 Capability Structure
+### 4.2 Capability Structure
 
 ```rust
 pub struct Capabilities {
@@ -180,10 +279,13 @@ pub struct Capabilities {
     pub fri_arities: Vec<u32>,
     pub recursion: RecursionMode,
     pub lookups: bool,
+    pub curves: Vec<CurveId>,     // e.g. ["jubjub","pallas"]
+    pub pedersen: bool,
+    pub keccak: bool,
 }
 ```
 
-### 3.3 Registry API
+### 4.3 Registry API
 
 ```rust
 pub struct BackendRegistry;
@@ -194,7 +296,7 @@ impl BackendRegistry {
 }
 ```
 
-### 3.4 BackendInfo Schema (JSON)
+### 4.4 BackendInfo Schema (JSON)
 
 ```json
 {
@@ -261,6 +363,17 @@ merkle_arity = 2
 }
 ```
 
+### 4.4 Commitment Binding Example
+
+```toml
+[[public.input]]
+name = "amount_commit"
+type = "Point"
+binding = "Pedersen(jubjub)"
+```
+
+This expands to two field elements `(Cx,Cy)` and enforces curve membership via the Pedersen bundle.
+
 ---
 
 ## 5. Data Serialization
@@ -272,6 +385,8 @@ merkle_arity = 2
 | PublicInputs   | Canonical JSON         | Stable key order                  |
 | Profiles       | TOML                   | Parsed, validated, cached         |
 | Events         | JSONL                  | Append-only                       |
+| Curve point    | `(Cx,Cy)` little-endian fields | For Pedersen commitments        |
+| Keccak digest  | 32-byte big-endian     | ABI-compatible with Solidity      |
 
 **Proof Header Layout (bytes):**
 
@@ -283,6 +398,49 @@ merkle_arity = 2
 [24-31] = proof length (u64)
 [32-…]  = compressed proof body
 ```
+
+---
+
+### Application Profiles & Presets
+
+In addition to generic AIR programs, the prover ships a library of **pre-baked application profiles** encoding common zero-knowledge constructions.
+Each profile defines:
+
+* **Manifest** — describes the AIR, field modulus, public-input schema, and gadget bindings.
+* **Presets** — safe default parameter sets (`fast`, `balanced`, `tight`, `mobile`).
+* **Profile ID** — unique identifier (e.g., `zk-auth-pedersen-secret`, `zk-proof-of-solvency-lite`).
+
+#### Typical Application Profiles
+
+| ID | Description | Gadgets | Public Inputs |
+|----|--------------|----------|---------------|
+| `zk-auth-pedersen-secret` | Passwordless secret authentication bound to `(nonce, origin)` | PedersenCommit, PoseidonBind | `C`, `nonce`, `origin`, `nullifier` |
+| `zk-allowlist-merkle` | Merkle allowlist membership plus session binding | MerklePathVerify, PoseidonBind | `root`, `pk_hash`, `path`, `nonce`, `origin` |
+| `zk-attr-range` | Attribute within declared bounds | RangeCheck, PedersenCommit | `commitment`, `min`, `max` |
+| `zk-balance-geq` | Balance ≥ threshold with optional adapter proof | RangeCheck, PedersenCommit | `commitment`, `threshold`, `adapter_proof` |
+| `zk-uniqueness-nullifier` | One action per epoch using nullifier | PoseidonNullifier, PoseidonBind | `nullifier`, `epoch` |
+| `zk-proof-of-solvency-lite` | Asset/liability delta commitment | MerklePathVerify, PedersenCommit, RangeCheck | `asset_root`, `liability_root`, `delta_commitment` |
+| `zk-vote-private` | Private ballot casting from allowlist | MerklePathVerify, PedersenCommit, PoseidonBind | `root`, `vote_commitment`, `nonce`, `tally_binding` |
+| `zk-file-hash-inclusion` | Document hash inclusion in Merkle root | MerklePathVerify, PoseidonBind | `root`, `file_hash`, `path` |
+| `zk-score-threshold` | Hidden score ≥ threshold tied to epoch | PedersenCommit, RangeCheck | `commitment`, `threshold`, `epoch` |
+| `zk-age-over` | Mobile-optimized age ≥ bound proof | RangeCheckLite, PedersenCommit | `commitment`, `bound` |
+
+#### Preset Customization
+
+Developers may override any preset via CLI/SDK parameters:
+
+```bash
+zkd prove --profile zk-auth-pedersen-secret --preset tight
+```
+
+or programmatically:
+
+```ts
+prove({ profile_id: "zk-auth-pedersen-secret", options: { preset: "mobile" } });
+```
+
+Presets reference performance profiles in `/profiles/*.toml` and map to deterministic resource limits.
+Advanced users can clone and edit manifests for full customization.
 
 ---
 
@@ -372,6 +530,8 @@ fn roundtrip_proof_verification() {
 This interface design enforces **strict determinism** and **inter-backend portability** while remaining friendly to automation (CLI + SDK + agent pipelines).
 Every call has explicit inputs, structured outputs, and reproducible serialization rules.
 By locking profiles, backends, and field types through versioned registries, proofs stay verifiable across environments and time.
+
+Commitment and privacy bindings preserve determinism: all digests are canonical and reproducible across backends. By standardizing point encodings and domain tags, proofs remain verifiable and portable across devices and chains.
 
 **Mantra:** *“Same input, same output, any backend.”*
 

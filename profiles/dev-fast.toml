@@ -1,2 +1,6 @@
 id = "dev-fast"
 lambda_bits = 80
+fri_blowup  = 8
+fri_queries = 24
+grind_bits  = 16
+merkle_arity = 2

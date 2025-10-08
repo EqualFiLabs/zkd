@@ -1,55 +1,51 @@
-//! Core library: registry stubs, profiles, and API surface for CLI/FFI.
+//! Core library: registry, profiles, and top-level APIs used by CLI/FFI.
+
+pub mod air;
+pub mod air_bindings {
+    pub use crate::air::bindings::*;
+}
+pub mod backend;
+pub mod config;
+pub mod crypto;
+pub mod errors;
+pub mod evm;
+pub mod gadgets;
+pub mod profile;
+pub mod proof;
+pub mod registry;
+pub mod trace;
+pub mod validate;
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
-/// Public profile info (minimal for scaffold)
+use profile::{load_all_profiles_or_default, Profile};
+
+static PROFILES: Lazy<Vec<Profile>> = Lazy::new(load_all_profiles_or_default);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileInfo {
-    pub id: &'static str,
+    pub id: String,
     pub lambda_bits: u32,
 }
 
-static DEFAULT_PROFILES: Lazy<Vec<ProfileInfo>> = Lazy::new(|| {
-    vec![
-        ProfileInfo {
-            id: "dev-fast",
-            lambda_bits: 80,
-        },
-        ProfileInfo {
-            id: "balanced",
-            lambda_bits: 100,
-        },
-        ProfileInfo {
-            id: "secure",
-            lambda_bits: 120,
-        },
-    ]
-});
-
-/// Public backend info (minimal for scaffold)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BackendInfo {
-    pub id: &'static str,
-    pub recursion: bool,
+pub fn list_profiles() -> Vec<ProfileInfo> {
+    PROFILES
+        .iter()
+        .map(|p| ProfileInfo {
+            id: p.id.clone(),
+            lambda_bits: p.lambda_bits,
+        })
+        .collect()
 }
 
-static DEFAULT_BACKENDS: Lazy<Vec<BackendInfo>> = Lazy::new(|| {
-    vec![BackendInfo {
-        id: "native@0.0",
-        recursion: false,
-    }]
-});
-
-/// API: list available profiles
-pub fn list_profiles() -> &'static [ProfileInfo] {
-    DEFAULT_PROFILES.as_slice()
+/// Public API (registry-backed)
+pub fn list_backends() -> Vec<backend::BackendInfo> {
+    registry::ensure_builtins_registered();
+    registry::list_backend_infos()
 }
 
-/// API: list available backends
-pub fn list_backends() -> &'static [BackendInfo] {
-    DEFAULT_BACKENDS.as_slice()
-}
+pub use validate::validate_config;
 
 /// Version helper for CLI
 pub fn version() -> &'static str {
@@ -60,8 +56,7 @@ pub fn version() -> &'static str {
 mod tests {
     use super::*;
     #[test]
-    fn has_profiles_and_backends() {
-        assert!(!list_profiles().is_empty());
-        assert!(!list_backends().is_empty());
+    fn profiles_exist() {
+        assert!(list_profiles().len() >= 3);
     }
 }

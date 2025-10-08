@@ -1,2 +1,6 @@
 id = "balanced"
 lambda_bits = 100
+fri_blowup  = 16
+fri_queries = 30
+grind_bits  = 18
+merkle_arity = 2

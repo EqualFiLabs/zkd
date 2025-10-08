@@ -28,7 +28,7 @@ Provide a **universal STARK proving system** capable of:
 
 | Phase       | Name         | Focus                                                             | Target Duration |
 | ----------- | ------------ | ----------------------------------------------------------------- | --------------- |
-| **Phase 0** | Foundation   | Core IR, validation, CLI/SDK, Native + Winterfell adapters        | 6–8 weeks       |
+| **Phase 0** | Foundation   | Core IR, validation, CLI/SDK/FFI, Native + Winterfell adapters    | 6–8 weeks       |
 | **Phase 1** | Portability  | Plonky2 backend, recursion scaffolding, cross-backend conformance | 8–10 weeks      |
 | **Phase 2** | Acceleration | GPU kernels, Plonky3, SNARK wrappers, distributed proving         | 10–12 weeks     |
 | **Phase 3** | Integration  | REST/gRPC API, Dockerized service, on-chain verifier generators   | 8 weeks         |
@@ -48,9 +48,16 @@ Provide a **universal STARK proving system** capable of:
 * Winterfell adapter (v0.6)
 * Proof profiles: `dev-fast`, `balanced`, `secure`
 * CLI: `zkd prove`, `zkd verify`, `zkd backend ls`
+* C ABI and FFI bindings (Node/TS, Python, Go, .NET, Swift/iOS, WASM) with CI pre-built libraries
 * Validation pipeline and `ValidationReport` emission
 * Full test suite and golden vectors
 * Docs: RFC, architecture, interfaces, validation, test-plan
+* Commitment & Privacy Gadgets: Pedersen, PoseidonCommit, KeccakCommit
+* Range-check bundle and validation coverage
+* **Pre-baked Application Profiles:**
+  Ready-made circuits for authentication, allowlist, attribute range, balance, uniqueness, solvency, private voting, file-inclusion, score-threshold, and age-gating use cases, plus a `profile-catalog.md` documenting schemas, presets, and validation vectors.
+  Delivered with SDK/CLI helpers and included in test/validation suites.
+* EVM-compatible Keccak and ABI encoders
 
 ### Exit Criteria
 
@@ -59,12 +66,15 @@ Provide a **universal STARK proving system** capable of:
 ✅ Cross-backend digest `D` identical
 ✅ CI matrix passes with 80%+ coverage
 ✅ Validation report emitted for all runs
+✅ FFI round-trip proofs succeed for toy/merkle/runsum across supported bindings and operating systems; CI publishes language packages
 
 ---
 
 ## 4. Phase 1 — Portability (Plonky2 Integration)
 
 **Objective:** Introduce Plonky2 backend and cross-backend compatibility matrix.
+
+Build upon the new crypto/commitment primitives to enable cross-backend parity with Pedersen and Keccak digests.
 
 ### Key Tasks
 
@@ -160,7 +170,7 @@ Provide a **universal STARK proving system** capable of:
 * Official examples repository
 * Online documentation site (`docs.zkprov.dev`)
 * Tutorials + code walkthroughs
-* Multi-language bindings (Rust, Python, JS)
+* Multi-language bindings (Phase 0 ships minimal FFI wrappers; Phase 4 adds idiomatic SDKs for TypeScript, Python, Go, .NET, Swift)
 * Public CI matrix (GitHub Actions / GCP runners)
 
 ### Deliverables
