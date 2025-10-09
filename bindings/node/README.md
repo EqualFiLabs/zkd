@@ -27,6 +27,11 @@ Building requires a Rust toolchain because the native addon links against the
 `zkprov-ffi-c` static library. The prebuild workflow automates this step and
 sets up the environment required by `prebuildify`.
 
+On Windows the native build uses MSVC, so the Rust archive must be produced for
+the `x86_64-pc-windows-msvc` target (for example via
+`cargo build --release --target x86_64-pc-windows-msvc -p zkprov-ffi-c`). This
+ensures `cargo` emits a `.lib` file that the Node.js build can link against.
+
 ```bash
 # Install dependencies without triggering a native rebuild yet
 npm install --ignore-scripts

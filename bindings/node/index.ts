@@ -60,18 +60,43 @@ function loadNativeBinding(): NativeBinding {
     return releaseBinding;
   }
 
-  const platform = process.platform;
-  const arch = process.arch;
-  const prebuildPath = path.join(
-    __dirname,
-    'prebuilds',
-    `${platform}-${arch}`,
-    'zkprov.napi.node',
-  );
+  const platformMap: Partial<Record<NodeJS.Platform, string>> = {
+    win32: 'win32',
+    darwin: 'darwin',
+    linux: 'linux',
+  };
+  const archMap: Partial<Record<NodeJS.Architecture, string>> = {
+    x64: 'x64',
+    arm64: 'arm64',
+  };
 
-  const prebuildBinding = tryLoad(prebuildPath);
-  if (prebuildBinding) {
-    return prebuildBinding;
+  const platform = platformMap[process.platform];
+  const arch = archMap[process.arch];
+
+  if (!platform || !arch) {
+    const unsupportedParts: string[] = [];
+    if (!platform) {
+      unsupportedParts.push(`platform "${process.platform}"`);
+    }
+    if (!arch) {
+      unsupportedParts.push(`architecture "${process.arch}"`);
+    }
+    const unsupported = unsupportedParts.join(' and ');
+    details.push(
+      `- prebuilds/${process.platform}-${process.arch} (unsupported ${unsupported})`,
+    );
+  } else {
+    const prebuildPath = path.join(
+      __dirname,
+      'prebuilds',
+      `${platform}-${arch}`,
+      'zkprov.napi.node',
+    );
+
+    const prebuildBinding = tryLoad(prebuildPath);
+    if (prebuildBinding) {
+      return prebuildBinding;
+    }
   }
 
   const errorLines = [

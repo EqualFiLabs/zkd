@@ -13,9 +13,6 @@
         "<!@(node -p \"require('node-addon-api').include_dir\")",
         "<(module_root_dir)/../../include"
       ],
-      "cflags_cc": [
-        "-std=c++17"
-      ],
       "defines": [
         "NAPI_DISABLE_CPP_EXCEPTIONS"
       ],
@@ -23,15 +20,28 @@
         [
           "OS=='win'",
           {
+            "defines": [
+              "_HAS_EXCEPTIONS=0"
+            ],
             "libraries": [
               "<(ZKPROV_STATIC)",
               "advapi32.lib",
               "bcrypt.lib",
               "user32.lib",
               "ws2_32.lib"
-            ]
+            ],
+            "msvs_settings": {
+              "VCCLCompilerTool": {
+                "AdditionalOptions": [
+                  "/std:c++17"
+                ]
+              }
+            }
           },
           {
+            "cflags_cc": [
+              "-std=c++17"
+            ],
             "libraries": [
               "<(ZKPROV_STATIC)",
               "-ldl",
