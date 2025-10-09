@@ -2,7 +2,7 @@
 
 # **Validation — General-Purpose STARK Prover**
 
-**Parent RFC:** RFC-ZK01 v0.2
+**Parent RFC:** RFC-ZK01 v0.3
 **Purpose:** Define how correctness is validated at every layer — configuration, AIR, constraint satisfaction, proof integrity, and backend conformance.
 **Status:** Stable post Phase 0 CI green.
 
@@ -149,33 +149,65 @@ pub struct ValidationReport {
     pub air_passed: bool,
     pub runtime_passed: bool,
     pub verifier_passed: bool,
-    pub commit_passed: bool, // new
+    pub commit_passed: bool,
+    pub vector_passed: bool,
     pub backend_id: String,
     pub profile_id: String,
+    pub determinism: DeterminismVector,
     pub issues: Vec<ValidationIssue>,
 }
 
+pub struct DeterminismVector {
+    pub backend: String,
+    pub manifest_hash: String,
+    pub compiler_commit: Option<String>,
+    pub system: Option<String>,
+    pub seed: Option<String>,
+}
+
 pub struct ValidationIssue {
-    pub stage: String,        // e.g. "runtime"
-    pub code: String,         // e.g. "ConstraintUnsatisfied"
-    pub message: String,      // human-readable
+    pub stage: String,
+    pub code: String,
+    pub message: String,
     pub fatal: bool,
 }
 ```
 
-Emitted as JSON under `reports/validation-{program_id}.json`.
+Emitted as JSON under `reports/validation-{program_id}.json`:
+
+```json
+{
+  "commit_passed": true,
+  "vector_passed": true,
+  "determinism": { "backend": "native@0.0", "manifest_hash": "d3e4f5" }
+}
+```
 
 ---
 
 ## 8. Determinism Checks
 
-1. Hash domain separation tags (`PROG`,`BUND`,`PUBI`) hard-coded.
+1. Determinism is validated on the proof layer, not the binary. Two builds of the same source (possibly compiled on different machines) must yield identical proof digests `D` for identical AIR + inputs + backend + profile.
 2. Public input JSON keys sorted lexicographically before hashing.
 3. Field serialization canonical LE representation.
 4. Random oracles seeded exclusively from transcript hash.
 5. Floating-point ops forbidden — integer field math only.
 
 If two runs on different machines produce distinct proof hashes → `NonDeterministicExecution`.
+
+Build fingerprints (compiler version, Cargo.lock hash) are logged in the validation report for audit transparency but do not affect proof correctness.
+
+### 8.1 Golden Vector Comparison
+
+Validation loads each entry from the [Golden Vector Registry](./golden-vectors.md) and replays the associated proof request across capability-compatible backends.
+For every vector, the pipeline asserts digest equality and records the result in `vector_passed`.
+Mismatch → `GoldenVectorMismatch` with diff of backend digests and manifest hashes.
+
+### 8.2 Determinism Vector Validation
+
+After digest comparison, the manifest hash derived from `determinism_vector` is recomputed and checked against the proof header.
+Failure raises `DeterminismManifestMismatch` and blocks promotion of the new proof artifact.
+Manifests must include `compiler_commit`, `backend`, `system`, and `seed` to satisfy audit completeness.
 
 ---
 
@@ -261,3 +293,5 @@ By recording all outcomes in a machine-readable report, the system becomes audit
 **Design mantra:** *“Every bit accounted for.”*
 
 ---
+
+Aligned with RFC-ZK01 v0.3 — Deterministic, Composable, Backend-Agnostic.

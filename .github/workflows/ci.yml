@@ -15,12 +15,12 @@ jobs:
             shared-path: target/x86_64-unknown-linux-gnu/release/libzkprov.so
             static-artifact: zkprov-ffi-static-linux
             static-path: target/x86_64-unknown-linux-gnu/release/libzkprov.a
-          - os: macos-latest
-            rust-target: x86_64-apple-darwin
-            shared-artifact: zkprov-ffi-macos
-            shared-path: target/x86_64-apple-darwin/release/libzkprov.dylib
-            static-artifact: zkprov-ffi-static-macos
-            static-path: target/x86_64-apple-darwin/release/libzkprov.a
+          - os: macos-14
+            rust-target: aarch64-apple-darwin
+            shared-artifact: zkprov-ffi-macos-arm64
+            shared-path: target/aarch64-apple-darwin/release/libzkprov.dylib
+            static-artifact: zkprov-ffi-static-macos-arm64
+            static-path: target/aarch64-apple-darwin/release/libzkprov.a
           - os: windows-latest
             rust-target: x86_64-pc-windows-msvc
             shared-artifact: zkprov-ffi-windows
@@ -47,11 +47,13 @@ jobs:
       - name: Build FFI libraries (release)
         run: cargo build -p zkprov-ffi-c --release --target ${{ matrix.rust-target }}
       - name: Upload FFI shared library artifact
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.shared-artifact }}
           path: ${{ matrix.shared-path }}
       - name: Upload FFI static library artifact
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.static-artifact }}
@@ -62,6 +64,8 @@ jobs:
           node-version: '20'
       - name: Install Node dependencies
         working-directory: bindings/node
+        env:
+          ZKPROV_STATIC: ${{ github.workspace }}/${{ matrix.static-path }}
         run: npm ci
       - name: Build Node addon
         working-directory: bindings/node

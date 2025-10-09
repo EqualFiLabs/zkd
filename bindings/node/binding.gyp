@@ -27,6 +27,8 @@
               "<(ZKPROV_STATIC)",
               "advapi32.lib",
               "bcrypt.lib",
+              "ntdll.lib",
+              "userenv.lib",
               "user32.lib",
               "ws2_32.lib"
             ],
@@ -42,11 +44,27 @@
             "cflags_cc": [
               "-std=c++17"
             ],
-            "libraries": [
-              "<(ZKPROV_STATIC)",
-              "-ldl",
-              "-lpthread",
-              "-lm"
+            "conditions": [
+              [
+                "OS=='mac'",
+                {
+                  "libraries": [
+                    "-Wl,-force_load",
+                    "<(ZKPROV_STATIC)",
+                    "-ldl",
+                    "-lpthread",
+                    "-lm"
+                  ]
+                },
+                {
+                  "libraries": [
+                    "<(ZKPROV_STATIC)",
+                    "-ldl",
+                    "-lpthread",
+                    "-lm"
+                  ]
+                }
+              ]
             ]
           }
         ]

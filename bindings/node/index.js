@@ -51,16 +51,41 @@ function loadNativeBinding() {
       `- prebuilds/${process.platform}-${process.arch} (unsupported ${unsupported})`,
     );
   } else {
-    const prebuildPath = path.join(
-      __dirname,
-      'prebuilds',
-      `${platform}-${arch}`,
-      'zkprov.napi.node',
-    );
+    const prebuildDir = path.join(__dirname, 'prebuilds', `${platform}-${arch}`);
 
-    const prebuildBinding = tryLoad(prebuildPath);
-    if (prebuildBinding) {
-      return prebuildBinding;
+    if (!fs.existsSync(prebuildDir)) {
+      details.push(`- ${prebuildDir} (not found)`);
+    } else {
+      const candidateNames = new Set();
+      const napiVersion = process.versions?.napi;
+      const moduleVersion = process.versions?.modules;
+      const prioritized = [
+        'zkprov.napi.node',
+        napiVersion ? `zkprov.napi-v${napiVersion}.node` : undefined,
+        moduleVersion ? `node-v${moduleVersion}.node` : undefined,
+        'node.napi.node',
+      ].filter((value) => Boolean(value));
+
+      for (const name of prioritized) {
+        candidateNames.add(name);
+      }
+
+      for (const entry of fs.readdirSync(prebuildDir)) {
+        if (entry.endsWith('.node')) {
+          candidateNames.add(entry);
+        }
+      }
+
+      for (const candidate of candidateNames) {
+        const prebuildBinding = tryLoad(path.join(prebuildDir, candidate));
+        if (prebuildBinding) {
+          return prebuildBinding;
+        }
+      }
+
+      if (candidateNames.size === 0) {
+        details.push(`- ${prebuildDir} (no native addon artifacts found)`);
+      }
     }
   }
 

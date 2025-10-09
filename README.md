@@ -15,6 +15,13 @@ cargo run -p zkd -- backend-ls
 cargo run -p zkd -- profile-ls
 ```
 
+## Determinism Policy
+
+**Determinism Policy**
+ZKD guarantees proof-level determinism: same source, same inputs, same backend, same digest.
+Prebuilt binaries are convenience builds only.
+To verify determinism, rebuild from source and compare proof digests against the published golden vectors in `/tests/golden_vectors/`.
+
 ## Building shared libraries
 
 The `zkprov-ffi-c` crate produces the shared library used by host applications.

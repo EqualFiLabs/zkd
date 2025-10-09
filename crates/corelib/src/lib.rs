@@ -15,6 +15,7 @@ pub mod proof;
 pub mod registry;
 pub mod trace;
 pub mod validate;
+pub mod validation;
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
