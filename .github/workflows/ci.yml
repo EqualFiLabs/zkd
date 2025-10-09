@@ -56,6 +56,23 @@ jobs:
         with:
           name: ${{ matrix.static-artifact }}
           path: ${{ matrix.static-path }}
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Node dependencies
+        working-directory: bindings/node
+        run: npm ci
+      - name: Build Node addon
+        working-directory: bindings/node
+        run: npx node-gyp rebuild
+        env:
+          ZKPROV_STATIC: ${{ github.workspace }}/${{ matrix.static-path }}
+      - name: Node bindings tests
+        working-directory: bindings/node
+        env:
+          ZKPROV_STATIC: ${{ github.workspace }}/${{ matrix.static-path }}
+        run: npm test
       - name: Run ffi_roundtrip C test (Linux)
         if: runner.os == 'Linux'
         run: |

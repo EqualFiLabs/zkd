@@ -27,7 +27,8 @@
   "scripts": {
     "build": "node-gyp rebuild",
     "prebuild": "node ./scripts/prebuild.js",
-    "test": "node -e \"require('./index.js')\""
+    "test": "npm run typecheck && node test/smoke.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "zk",
