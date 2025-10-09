@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <limits>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -40,32 +41,98 @@ Napi::Object CreateErrorObject(Napi::Env env, int32_t code, const std::string &d
   return err;
 }
 
-Napi::Object ParseJsonObjectOrFallback(Napi::Env env, const std::string &json) {
+bool ParseJson(Napi::Env env, const std::string &json, Napi::Value *out_value,
+               std::string *detail) {
   if (json.empty()) {
-    return Napi::Object::New(env);
+    *out_value = env.Undefined();
+    return true;
   }
 
-  Napi::String json_text = Napi::String::New(env, json);
+  Napi::EscapableHandleScope scope(env);
   Napi::Value json_namespace = env.Global().Get("JSON");
-  if (json_namespace.IsObject()) {
-    Napi::Object json_object = json_namespace.As<Napi::Object>();
-    Napi::Value parse_value = json_object.Get("parse");
-    if (parse_value.IsFunction()) {
-      Napi::Function parse = parse_value.As<Napi::Function>();
-      Napi::Value parsed = parse.Call(json_object, {json_text});
-      if (!env.IsExceptionPending() && parsed.IsObject()) {
-        return parsed.As<Napi::Object>();
-      }
+  if (!json_namespace.IsObject()) {
+    *detail = "Global JSON object is unavailable";
+    return false;
+  }
+
+  Napi::Object json_object = json_namespace.As<Napi::Object>();
+  Napi::Value parse_value = json_object.Get("parse");
+  if (!parse_value.IsFunction()) {
+    *detail = "JSON.parse is unavailable";
+    return false;
+  }
+
+  Napi::Function parse = parse_value.As<Napi::Function>();
+  Napi::String json_text = Napi::String::New(env, json);
+  Napi::Value parsed = parse.Call(json_object, {json_text});
+  if (env.IsExceptionPending()) {
+    Napi::Error err = env.GetAndClearPendingException();
+    *detail = std::string("Failed to parse JSON: ") + err.Message();
+    return false;
+  }
+
+  *out_value = scope.Escape(parsed);
+  return true;
+}
+
+bool ParseMeta(Napi::Env env, const std::string &json, uint64_t expected_proof_len,
+               bool require_proof_len, Napi::Object *out_meta, std::string *detail) {
+  if (json.empty()) {
+    *detail = "Meta response is empty";
+    return false;
+  }
+
+  Napi::Value parsed;
+  if (!ParseJson(env, json, &parsed, detail)) {
+    return false;
+  }
+
+  if (!parsed.IsObject()) {
+    *detail = "Meta JSON must describe an object";
+    return false;
+  }
+
+  Napi::Object meta = parsed.As<Napi::Object>();
+  if (!meta.Has("digest")) {
+    *detail = "Meta object missing 'digest'";
+    return false;
+  }
+  Napi::Value digest_value = meta.Get("digest");
+  if (!digest_value.IsString()) {
+    *detail = "Meta property 'digest' must be a string";
+    return false;
+  }
+
+  bool has_proof_len = meta.Has("proof_len");
+  if (require_proof_len && !has_proof_len) {
+    *detail = "Meta object missing 'proof_len'";
+    return false;
+  }
+
+  if (has_proof_len) {
+    Napi::Value proof_len_value = meta.Get("proof_len");
+    if (!proof_len_value.IsNumber()) {
+      *detail = "Meta property 'proof_len' must be a number";
+      return false;
+    }
+
+    double proof_len_double = proof_len_value.As<Napi::Number>().DoubleValue();
+    if (proof_len_double < 0.0 || std::floor(proof_len_double) != proof_len_double) {
+      *detail = "Meta property 'proof_len' must be a non-negative integer";
+      return false;
+    }
+
+    uint64_t proof_len = static_cast<uint64_t>(proof_len_double);
+    if (proof_len != expected_proof_len) {
+      std::ostringstream oss;
+      oss << "Meta proof_len " << proof_len << " does not match expected " << expected_proof_len;
+      *detail = oss.str();
+      return false;
     }
   }
 
-  if (env.IsExceptionPending()) {
-    env.GetAndClearPendingException();
-  }
-
-  Napi::Object fallback = Napi::Object::New(env);
-  fallback.Set("raw", json_text);
-  return fallback;
+  *out_meta = meta;
+  return true;
 }
 
 struct CommonConfig {
@@ -171,12 +238,75 @@ class PromiseWorker : public Napi::AsyncWorker {
   }
 
   void Resolve(const Napi::Value &value) { deferred_.Resolve(value); }
+  void Reject(const Napi::Value &value) { deferred_.Reject(value); }
 
  private:
   Napi::Promise::Deferred deferred_;
   int32_t error_code_ = ZKP_ERR_INTERNAL;
   std::string error_detail_;
   std::string error_message_;
+};
+
+class ListWorker : public PromiseWorker {
+ public:
+  using ListFn = int32_t (*)(char **);
+
+  ListWorker(Napi::Env env, ListFn fn, const char *name)
+      : PromiseWorker(env), fn_(fn), name_(name) {}
+
+  ~ListWorker() override {
+    if (json_ptr_ != nullptr) {
+      zkp_free(json_ptr_);
+      json_ptr_ = nullptr;
+    }
+  }
+
+ protected:
+  void Execute() override {
+    int32_t rc = zkp_init();
+    if (rc != ZKP_OK) {
+      Fail(rc, std::string("zkp_init failed during ") + name_);
+      return;
+    }
+
+    rc = fn_(&json_ptr_);
+    if (rc != ZKP_OK) {
+      if (json_ptr_ != nullptr) {
+        zkp_free(json_ptr_);
+        json_ptr_ = nullptr;
+      }
+      Fail(rc, std::string(name_) + " failed");
+      return;
+    }
+
+    if (json_ptr_ != nullptr) {
+      json_ = json_ptr_;
+      zkp_free(json_ptr_);
+      json_ptr_ = nullptr;
+    }
+  }
+
+  void OnOK() override {
+    Napi::Env env = Env();
+    std::string detail;
+    Napi::Value parsed;
+    if (!ParseJson(env, json_, &parsed, &detail) || parsed.IsUndefined()) {
+      if (detail.empty()) {
+        detail = "Empty JSON response";
+      }
+      Reject(CreateErrorObject(env, ZKP_ERR_INTERNAL, detail,
+                               std::string(name_) + " produced invalid JSON"));
+      return;
+    }
+
+    Resolve(parsed);
+  }
+
+ private:
+  ListFn fn_;
+  const char *name_;
+  char *json_ptr_ = nullptr;
+  std::string json_;
 };
 
 class ProveWorker : public PromiseWorker {
@@ -229,17 +359,28 @@ class ProveWorker : public PromiseWorker {
     Napi::Env env = Env();
     Napi::Object result = Napi::Object::New(env);
 
+    Napi::Buffer<uint8_t> proof_buffer;
     if (proof_ptr_ != nullptr) {
-      Napi::Buffer<uint8_t> proof_buffer = Napi::Buffer<uint8_t>::New(
-          env, proof_ptr_, static_cast<size_t>(proof_len_),
-          [](Napi::Env /*env*/, uint8_t *data) { zkp_free(data); });
+      if (proof_len_ > 0) {
+        proof_buffer = Napi::Buffer<uint8_t>::Copy(env, proof_ptr_, static_cast<size_t>(proof_len_));
+      } else {
+        proof_buffer = Napi::Buffer<uint8_t>::New(env, 0);
+      }
+      zkp_free(proof_ptr_);
       proof_ptr_ = nullptr;
-      result.Set("proof", proof_buffer);
     } else {
-      result.Set("proof", Napi::Buffer<uint8_t>::New(env, 0));
+      proof_buffer = Napi::Buffer<uint8_t>::New(env, 0);
     }
 
-    result.Set("meta", ParseJsonObjectOrFallback(env, meta_json_));
+    std::string detail;
+    Napi::Object meta_obj;
+    if (!ParseMeta(env, meta_json_, proof_buffer.Length(), true, &meta_obj, &detail)) {
+      Reject(CreateErrorObject(env, ZKP_ERR_INTERNAL, detail, "Invalid meta returned from zkp_prove"));
+      return;
+    }
+
+    result.Set("proof", proof_buffer);
+    result.Set("meta", meta_obj);
     Resolve(result);
   }
 
@@ -294,7 +435,19 @@ class VerifyWorker : public PromiseWorker {
     Napi::Env env = Env();
     Napi::Object result = Napi::Object::New(env);
     result.Set("verified", Napi::Boolean::New(env, verified_));
-    result.Set("meta", ParseJsonObjectOrFallback(env, meta_json_));
+
+    std::string detail;
+    Napi::Object meta_obj;
+    if (!meta_json_.empty()) {
+      if (!ParseMeta(env, meta_json_, proof_len_, false, &meta_obj, &detail)) {
+        Reject(CreateErrorObject(env, ZKP_ERR_INTERNAL, detail, "Invalid meta returned from zkp_verify"));
+        return;
+      }
+    } else {
+      meta_obj = Napi::Object::New(env);
+    }
+
+    result.Set("meta", meta_obj);
     Resolve(result);
   }
 
@@ -313,42 +466,20 @@ Napi::Promise RejectInvalidArg(Napi::Env env, const std::string &detail) {
   return deferred.Promise();
 }
 
-Napi::Promise HandleListCall(Napi::Env env, int32_t (*fn)(char **), const char *name) {
-  Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
-
-  int32_t rc = zkp_init();
-  if (rc != ZKP_OK) {
-    deferred.Reject(CreateErrorObject(env, rc, std::string("zkp_init failed during ") + name));
-    return deferred.Promise();
-  }
-
-  char *json = nullptr;
-  rc = fn(&json);
-  if (rc != ZKP_OK) {
-    if (json != nullptr) {
-      zkp_free(json);
-    }
-    deferred.Reject(CreateErrorObject(env, rc, std::string(name) + " failed"));
-    return deferred.Promise();
-  }
-
-  std::string json_string = json != nullptr ? std::string(json) : std::string();
-  if (json != nullptr) {
-    zkp_free(json);
-  }
-
-  deferred.Resolve(ParseJsonObjectOrFallback(env, json_string));
-  return deferred.Promise();
-}
-
 Napi::Value ListBackends(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
-  return HandleListCall(env, zkp_list_backends, "zkp_list_backends");
+  ListWorker *worker = new ListWorker(env, zkp_list_backends, "zkp_list_backends");
+  Napi::Promise promise = worker->GetPromise();
+  worker->Queue();
+  return promise;
 }
 
 Napi::Value ListProfiles(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
-  return HandleListCall(env, zkp_list_profiles, "zkp_list_profiles");
+  ListWorker *worker = new ListWorker(env, zkp_list_profiles, "zkp_list_profiles");
+  Napi::Promise promise = worker->GetPromise();
+  worker->Queue();
+  return promise;
 }
 
 Napi::Value Prove(const Napi::CallbackInfo &info) {
