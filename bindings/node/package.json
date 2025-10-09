@@ -1,0 +1,30 @@
+{
+  "name": "@zkprov/node",
+  "version": "0.1.0",
+  "description": "Node.js bindings for zkProv",
+  "type": "commonjs",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "gypfile": true,
+  "scripts": {
+    "build": "node-gyp rebuild",
+    "prebuild": "prebuildify -t 18.0.0 -t 20.0.0 -t 22.0.0",
+    "test": "node -e \"require('./index.js')\""
+  },
+  "keywords": [
+    "zk",
+    "wasm",
+    "napi"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "node-addon-api": "^7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "node-gyp": "^10.0.0",
+    "prebuildify": "^6.0.0",
+    "typescript": "^5.0.0"
+  }
+}
