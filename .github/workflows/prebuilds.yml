@@ -1,0 +1,120 @@
+name: Node.js prebuilds
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: prebuild (${{ matrix.os }}, node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: ['18', '20', '22']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          check-latest: true
+          cache: npm
+          cache-dependency-path: bindings/node/package-lock.json
+
+      - name: Build Rust static library
+        run: cargo build -p zkprov-ffi-c --release
+
+      - name: Resolve static library path
+        id: static
+        run: |
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            static_path="$(python -c 'import os; print(os.path.join(os.environ["GITHUB_WORKSPACE"], "target", "release", "zkprov.lib"))')"
+          else
+            static_path="$GITHUB_WORKSPACE/target/release/libzkprov.a"
+          fi
+
+          echo "path=$static_path" >> "$GITHUB_OUTPUT"
+          printf 'ZKPROV_STATIC=%s\n' "$static_path" >> "$GITHUB_ENV"
+
+      - name: Install Node.js dependencies
+        working-directory: bindings/node
+        run: npm ci
+
+      - name: Build prebuild artifacts
+        working-directory: bindings/node
+        run: npm run prebuild
+
+      - name: Upload prebuild artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-${{ matrix.os }}-node${{ matrix.node-version }}
+          path: bindings/node/prebuilds
+          if-no-files-found: error
+
+  publish:
+    name: publish package
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          check-latest: true
+          cache: npm
+          cache-dependency-path: bindings/node/package-lock.json
+
+      - name: Build Rust static library
+        run: cargo build -p zkprov-ffi-c --release
+
+      - name: Export static library path
+        run: printf 'ZKPROV_STATIC=%s\n' "$GITHUB_WORKSPACE/target/release/libzkprov.a" >> "$GITHUB_ENV"
+
+      - name: Install Node.js dependencies
+        working-directory: bindings/node
+        run: npm ci
+
+      - name: Prepare prebuild directory
+        working-directory: bindings/node
+        run: rm -rf prebuilds
+
+      - name: Download prebuild artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: prebuild-*-node20
+          path: bindings/node
+          merge-multiple: true
+
+      - name: Publish to npm
+        working-directory: bindings/node
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public

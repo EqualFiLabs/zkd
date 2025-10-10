@@ -2,7 +2,7 @@
 
 # **Interfaces — General-Purpose STARK Prover**
 
-**Parent RFC:** RFC-ZK01 v0.2
+**Parent RFC:** RFC-ZK01 v0.3
 **Purpose:** Formalize every external and internal interface exposed by the proving system, including the CLI, SDK, backend trait contracts, and JSON/TOML schemas.
 **Status:** Draft → Frozen once the Phase 0 implementation compiles.
 
@@ -12,24 +12,30 @@
 
 ### 1.1 Commands
 
-| Command          | Description                                                        |
-| ---------------- | ------------------------------------------------------------------ |
-| `zkd init`       | Scaffold a new proving workspace with default config and profiles. |
-| `zkd prove`      | Build trace, run backend prover, and emit proof blob.              |
-| `zkd verify`     | Re-run transcript and verify proof deterministically.              |
-| `zkd io schema`  | Display the declared public input/output schema of a program.      |
-| `zkd profile ls` | List all available proof-profile presets.                          |
-| `zkd backend ls` | Enumerate registered backend adapters and their capabilities.      |
+| Command              | Description                                                        |
+| -------------------- | ------------------------------------------------------------------ |
+| `zkd init`           | Scaffold a new proving workspace with default config and profiles. |
+| `zkd compile`        | Compile a `.yaml` AIR into canonical `.air` binary form.           |
+| `zkd prove`          | Build trace, resolve backend via capabilities, and emit proof blob.|
+| `zkd prove --profile`| Run proof with a named profile bundle (e.g., `dev-fast`).         |
+| `zkd verify`         | Re-run transcript and verify proof deterministically.              |
+| `zkd verify --manifest` | Verify proof bytes using determinism manifest JSON.           |
+| `zkd vector validate`| Run Golden Vector parity validation across registered backends.   |
+| `zkd io schema`      | Display the declared public input/output schema of a program.      |
+| `zkd profile ls`     | List all available proof-profile presets.                          |
+| `zkd backend ls`     | Enumerate registered backend adapters and their capabilities.      |
 
 ### 1.2 Syntax Examples
 
 ```bash
+# Compile YAML AIR into binary IR
+zkd compile specs/balance.yml -o build/balance.air
+
 # Prove a program with Winterfell backend
 zkd prove \
   -p programs/merkle.air \
   -i inputs/merkle.json \
-  -b winterfell@0.6 \
-  --profile balanced \
+  --profile dev-fast \
   -o proofs/merkle-balanced.proof
 
 # Verify the proof
@@ -39,6 +45,14 @@ zkd verify \
   -b winterfell@0.6 \
   --profile balanced \
   -P proofs/merkle-balanced.proof
+
+# Verify using determinism manifest JSON
+zkd verify \
+  --manifest proofs/merkle-balanced.proof.json \
+  -P proofs/merkle-balanced.proof
+
+# Run Golden Vector parity validation
+zkd vector validate --root tests/golden_vectors
 ```
 
 ### 1.3 CLI Exit Codes
@@ -65,6 +79,12 @@ zkd verify \
 | `--stats`         |       | Bool   | Print runtime stats JSON                      |
 
 > **Embedding note:** Applications embedding the prover from other languages should see §3 for the C ABI and bindings that mirror these CLI workflows.
+
+### 1.5 Golden Vector Validation
+
+`zkd vector validate` traverses the [Golden Vector Registry](./golden-vectors.md), regenerates proofs for each registered backend, and compares digests and determinism manifests.
+The command returns non-zero if any backend diverges or if the determinism vector hash fails validation.
+Reports emit `vector_passed` and `manifest_hash` fields for downstream CI aggregation.
 
 ---
 
@@ -114,6 +134,8 @@ pub fn list_profiles() -> Vec<ProfileInfo>;
 ```
 
 > **Embedding note:** Higher-level bindings in other languages wrap these SDK concepts via the C ABI outlined in §3.
+
+> **YAML import:** `AirProgram::load_from_file("balance.yml")` accepts both `.air` and `.yaml` sources, compiling YAML deterministically into AIR-IR before proving.
 
 ### 2.3 Error Contracts
 
@@ -227,14 +249,26 @@ int main(void) {
 
 Language bindings publish ergonomic wrappers around these calls:
 
-* **Node/TypeScript** — N-API addon exposing async `prove()`/`verify()` Promises.
-* **Python** — `ctypes`/`cffi` layer returning `dict` objects and `bytes` buffers.
+* **Node/TypeScript** — N-API addon exposing async `prove()`/`verify()` Promises and `loadProgram("*.yaml")` helpers.
+* **Python** — `ctypes`/`cffi` layer returning `dict` objects, `bytes` buffers, and `compile_yaml("balance.yml")` utilities.
 * **Go** — `cgo` package returning Go errors and slices.
 * **.NET** — P/Invoke declarations mapping to `SafeHandle` wrappers.
 * **Swift/iOS** — `@_cdecl` shims bridging to Swift classes for mobile apps.
 * **WASI/WebAssembly** — thin JS/Wasm glue calling the same exported functions.
 
 These bindings add runtime-specific ergonomics but stay in lockstep with the C ABI.
+
+### 3.7 EVM ABI Helpers
+
+The FFI exposes helper functions for Solidity interoperability:
+
+| Function | Signature | Purpose |
+| -------- | --------- | ------- |
+| `zkp_keccak_commit` | `zkp_error* zkp_keccak_commit(zkp_context*, const uint8_t* preimage, size_t len, uint8_t out_digest[32]);` | Mirrors the `KeccakCommit` gadget and emits a Solidity-ready digest. |
+| `zkp_evm_log_proof` | `zkp_error* zkp_evm_log_proof(zkp_context*, const char* proof_json, zkp_buffer* out_abi);` | Wraps `EvmLogProof` outputs into ABI-encoded payloads. |
+| `zkp_verifier_stub_digest` | `zkp_error* zkp_verifier_stub_digest(const uint8_t* proof_bytes, size_t len, uint8_t out_digest[32]);` | Produces the digest consumed by the on-chain `VerifierStub`. |
+
+Language bindings surface these helpers as convenience wrappers for contract deployments and Foundry tests.
 
 ---
 
@@ -399,6 +433,30 @@ This expands to two field elements `(Cx,Cy)` and enforces curve membership via t
 [32-…]  = compressed proof body
 ```
 
+### 5.1 Proof JSON Schema
+
+`zkd prove --stats` and `zkd verify --manifest` emit JSON containing the determinism vector:
+
+```json
+{
+  "program": "balance_check",
+  "backend": "winterfell@0.6",
+  "profile": "dev-fast",
+  "digest": "0xabc123...",
+  "determinism_vector": {
+    "compiler_commit": "0a1b2c3d",
+    "backend": "winterfell@0.6",
+    "system": "linux-x86_64",
+    "seed": "0001020304050607",
+    "manifest_hash": "d3e4f5"
+  },
+  "vector_passed": true,
+  "elapsed_ms": 128
+}
+```
+
+Consumers must persist the determinism vector and manifest hash to reproduce proofs and to satisfy Golden Vector parity checks.
+
 ---
 
 ### Application Profiles & Presets
@@ -536,3 +594,5 @@ Commitment and privacy bindings preserve determinism: all digests are canonical 
 **Mantra:** *“Same input, same output, any backend.”*
 
 ---
+
+Aligned with RFC-ZK01 v0.3 — Deterministic, Composable, Backend-Agnostic.

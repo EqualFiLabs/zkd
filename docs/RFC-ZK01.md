@@ -1,13 +1,15 @@
-# **RFC-ZK01: General-Purpose STARK Prover — v0.2**
+# **RFC-ZK01: General-Purpose STARK Prover — v0.3**
 
 ---
 
 ## 1. Abstract
 
 This RFC defines a **modular, backend-agnostic STARK proving engine** that allows developers to construct, prove, and verify algebraic constraint systems over configurable cryptographic backends.
+It verifies algebraic relations only; **this engine does not execute programs or VM bytecode.**
 It separates the high-level **AIR-IR** (Algebraic Intermediate Representation) from the low-level proving backends (Winterfell, Plonky2, Plonky3, native).
 Developers can author custom bundles, public-input schemas, and parameter profiles while targeting any supported backend through a consistent API.
-Version 0.2 introduces the **Backend Adapter Layer**, enabling portable proofs across multiple STARK implementations without rewriting programs.
+Backends are resolved by capability matching rather than global defaults, ensuring the adapter layer selects an implementation compatible with the requested field, hash, and FRI arity.
+Version 0.3 introduces the **Backend Adapter Layer**, YAML-authored AIR definitions, determinism manifests, Golden Vector registry enforcement, and EVM interoperability gadgets while preserving backward-compatible semantics.
 
 ---
 
@@ -34,7 +36,7 @@ Version 0.2 introduces the **Backend Adapter Layer**, enabling portable proofs a
 | `MERKLE_ARITY`    | Supported tree arities                                           | { 2, 4 }       |
 | `PROFILE`         | Preset parameter bundle                                          | balanced       |
 | `HASH_FN`         | Poseidon2 default; Rescue/Blake3 optional                        | Poseidon2      |
-| `BACKEND`         | STARK implementation (`native`,`winterfell`,`plonky2`,`plonky3`) | native         |
+| `BACKEND`         | STARK implementation (`native`,`winterfell`,`plonky2`,`plonky3`) resolved via capability matching | capability-matched |
 | `CONST_COL_LIMIT` | Max lifted const/public columns                                  | 64             |
 | `MAX_DEGREE`      | Global polynomial degree bound                                   | 64             |
 
@@ -111,6 +113,33 @@ Capabilities {
   lookups: bool
 }
 ```
+
+### 4.2 YAML AIR Definition
+
+Programs MAY be authored in a human-readable `.yaml` schema that mirrors the `AirProgram` structs above.
+YAML documents compile deterministically into canonical `.air` binaries using the CLI:
+
+```bash
+$ zkd compile balance.yml
+```
+
+Example minimal YAML:
+
+```yaml
+meta:
+  name: balance_check
+  field: Prime254
+  hash: poseidon2
+columns:
+  trace_cols: 4
+  const_cols: 1
+constraints:
+  transition_count: 2
+  boundary_count: 1
+```
+
+The compiler lifts YAML into AIR-IR, performs validation, and emits bytecode-identical `.air` binaries for every platform.
+No auxiliary state or randomness participates in this transformation, enabling reproducible downstream proofs.
 
 ---
 
@@ -235,6 +264,14 @@ Initial profiles:
 
 These adhere to the same validation, commitment, and digest-binding rules defined elsewhere in this RFC.
 
+### 9.2 EVM Interop Gadgets
+
+| Gadget | Description | Output Binding |
+| ------ | ----------- | -------------- |
+| `KeccakCommit` | Hashes transcript inputs with Keccak256 for Solidity parity | `bytes32` digest exposed to on-chain verifiers |
+| `EvmLogProof` | Produces inclusion proof for canonical Ethereum log topics | ABI-encoded proof blob plus Merkle branch |
+| `VerifierStub` | Minimal Solidity verifier that checks digest equality only | `bool` flag per proof manifest |
+
 ---
 
 ## 10. Reward / Fee / Allocation Rules
@@ -259,7 +296,7 @@ All events logged JSONL + stdout.
 ## 12. Security & Privacy Considerations
 
 * **Soundness:** Each backend must guarantee λ ≥ declared target.
-* **Determinism:** Transcripts stable given same backend + profile across CLI, SDK, and FFI bindings.
+* **Determinism:** Proof determinism is defined at the algorithmic level. Given identical AIR, backend, profile, and public inputs, every honest build—regardless of compiler, platform, or binary—must emit the same transcript and final digest `D`. Binaries need not be bit-identical; reproducibility of outputs, not artifacts, is the invariant. All randomness is derived deterministically from transcript seeds, and floating-point operations are forbidden.
 * **Integrity:** Merkle and FRI commitments binding.
 * **Cross-backend parity:** Equivalent AIR + public inputs → proof verifies on all backends supporting same field/hash.
 * **Isolation:** Adapters sandboxed; no network I/O during prove/verify. FFI bindings must propagate validation results without mutating proof bytes.
@@ -276,6 +313,31 @@ FFI bindings are required to forward `ValidationReport` objects and structured e
 * **EVM Compatibility:** `KeccakCommit` uses canonical Keccak256 encoding for digest parity with Solidity.
 * **Isolation:** All commitment gadgets execute deterministically and offline; no randomness or external I/O.
 
+### 12.2 Build Provenance
+
+* **Build Provenance (Transparency Rule)**
+  Implementations may distribute prebuilt binaries for convenience, but users are encouraged to build from source.
+  Proof-level determinism is verifiable via golden vectors and validation reports, ensuring that locally built binaries produce the same digests as reference runs.
+  Prebuilt artifacts are considered *non-canonical*.
+
+### 12.3 Determinism Vector
+
+Every proof exports a manifest capturing the provenance of the build inputs.
+The manifest is hashed into the transcript and must be preserved verbatim for downstream verification.
+
+```json
+{
+  "determinism_vector": {
+    "compiler_commit": "0a1b2c3d",
+    "backend": "native@0.0",
+    "system": "linux-x86_64",
+    "seed": "0001020304050607"
+  }
+}
+```
+
+Validation pipelines recompute the manifest hash and compare it against the proof header, guaranteeing deterministic provenance across hosts and bindings.
+
 ---
 
 ## 13. Testing & Verification
@@ -287,14 +349,34 @@ FFI bindings are required to forward `ValidationReport` objects and structured e
 **Bench** — time/memory for (dev, balanced, secure) profiles × (backends).
 **DoD:** All tests pass; deterministic transcripts; λ ≥ target; backend validator rejects invalid combos.
 
+### 13.1 Golden Vector Registry
+
+Golden vectors capture canonical transcripts and digests per AIR/back-end pairing.
+Entries live under `/tests/golden_vectors/{program}/{backend}.json` and must agree byte-for-byte on the final digest `D`.
+CI enforces parity by regenerating vectors for each backend and failing if any digest diverges.
+Registry updates require explicit review with manifest hashes attached to prevent accidental drift.
+
 ---
 
 ## 14. Rationale and Summary
 
 This revision positions the STARK engine as a universal proving platform: a stable IR front-end with swappable cryptographic backends.
-Backends implement standard traits and declare capabilities, letting users choose Winterfell for simplicity, Plonky2/3 for recursion, or native for experimentation.
+Backends implement standard traits and declare capabilities, letting the engine match each proof request to a compatible implementation rather than relying on global defaults.
+The proving core verifies algebraic relations exclusively—never full programs or VM bytecode—keeping the focus on deterministic constraint satisfaction.
 This architecture preserves determinism and soundness while future-proofing for new FRI variants or hybrid SNARK wrappers.
 
 **Design mantra:** *“One AIR to rule them all — backends as replaceable engines.”*
 
 ---
+
+## 15. Roadmap
+
+| Phase | Scope | Acceptance Gate |
+| ----- | ----- | --------------- |
+| Ph0 | YAML parser + deterministic proofs | `zkd compile` succeeds on reference AIRs and manifests embed determinism vector hashes |
+| Ph1 | Golden Vector Registry | Cross-backend digests equal for all registry entries (CI enforced) |
+| Ph2 | EVM Interop Gadgets | Solidity `VerifierStub` verifies Keccak digests emitted by off-chain prover |
+| Ph3 | Profile Registry (community bundles) | Community bundles publish manifests with passing vector validation |
+| Ph4 | zk-VM adapters (deferred) | Design review complete; adapters gated on deterministic manifest semantics |
+
+Aligned with RFC-ZK01 v0.3 — Deterministic, Composable, Backend-Agnostic.

@@ -277,8 +277,11 @@ Outliers > 3× baseline → `PerformanceAnomaly` (non-fatal) recorded in `Valida
 
 ## 11) Determinism Tests
 
+Determinism tests assert equality of proof digests across multiple *source builds* and execution hosts.
+Binary reproducibility is not required; identical inputs and AIR must still produce identical digest `D`.
+
 * Two consecutive runs (same host) produce **identical** proof headers and transcript seeds.
-* Cross-machine (CI runner vs local) equality on:
+* Cross-build (CI runner vs local source build) equality on:
 
   * Program hash
   * Public-input encoding digest
@@ -293,6 +296,9 @@ zkd prove  -p tests/fixtures/merkle.air -i tests/fixtures/merkle.json -b native 
 jq -r '.seed' /tmp/m.proof.meta > /tmp/seed2
 diff /tmp/seed1 /tmp/seed2
 ```
+
+> Builds compiled on separate machines should be tested via the same public fixtures.
+> If digest `D` differs, file `CrossBuildDrift`.
 
 Exit code must be `0`.
 

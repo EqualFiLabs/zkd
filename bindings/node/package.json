@@ -1,0 +1,49 @@
+{
+  "name": "@zkprov/node",
+  "version": "0.1.0",
+  "description": "Node.js bindings for zkProv",
+  "type": "commonjs",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "gypfile": true,
+  "binary": {
+    "napi_versions": [
+      8,
+      9
+    ],
+    "module_name": "zkprov",
+    "module_path": "prebuilds/{platform}-{arch}",
+    "remote_path": "./",
+    "package_name": "zkprov.napi.node"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "prebuilds/**",
+    "build/Release/zkprov.node",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node-gyp rebuild",
+    "prebuild": "node ./scripts/prebuild.js",
+    "test": "npm run typecheck && node test/smoke.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "zk",
+    "wasm",
+    "napi"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "node-addon-api": "^7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "node-gyp": "^10.0.0",
+    "prebuildify": "^6.0.0",
+    "typescript": "^5.0.0"
+  }
+}

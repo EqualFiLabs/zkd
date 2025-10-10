@@ -446,6 +446,7 @@
 
 * [ ] Native & Winterfell backends working
 * [ ] Deterministic proofs & transcripts
+* [ ] Document how to rebuild from source and verify deterministic digests (`make prove && make verify && diff D`)
 * [ ] **Crypto primitives** (Poseidon/Rescue/Merkle/Keccak) shipped
 * [ ] **Privacy gadgets** (Pedersen + Range + Arith) shipped
 * [ ] **EVM Interop** (KeccakCommit + ABI + Solidity digest stub) passes parity
@@ -480,7 +481,7 @@
 
 ## Acceptance Criteria Map (Cross-Reference)
 
-* **Determinism:** identical headers & `D` across runs and hosts (Ph0–Ph2).
+* **Determinism:** identical proof headers & digest `D` across runs, hosts, and source builds (Ph0–Ph2). Bit-identical binaries not required.
 * **Commitment correctness:** `commit_passed=true`; errors: `InvalidCurvePoint`, `BlindingReuse`, `RangeCheckOverflow`, `KeccakUnavailable`, `PedersenConfigMismatch` (Ph0).
 * **Parity:** cross-backend `D` equality (Ph0–Ph1–Ph2).
 * **Performance:** GPU speedup validated; pedersen benchmarks within documented bounds (Ph2).

@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "es2019",
+    "module": "commonjs",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": false,
+    "types": ["node"],
+    "declaration": false,
+    "emitDeclarationOnly": false
+  },
+  "include": ["./index.ts"]
+}

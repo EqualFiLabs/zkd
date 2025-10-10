@@ -2,7 +2,7 @@
 
 # **Architecture — General-Purpose STARK Prover**
 
-**Parent RFC:** RFC-ZK01 v0.2
+**Parent RFC:** RFC-ZK01 v0.3
 **Purpose:** Describe the logical, data, and control-flow architecture of the multi-backend STARK proving system.
 **Status:** Draft → Stable after Phase 0 implementation.
 
@@ -45,6 +45,15 @@ The proving engine is structured as a **layered stack**:
 └──────────────────────────────────────────────────────────────┘
 ```
 
+**Design Pillars**
+
+1. Determinism → identical inputs = identical outputs, validated at the proof layer independent of binary reproducibility.
+2. Portability → same AIR across all backends.
+3. Extensibility → new backends, new hashes, zero rewrites.
+4. Transparency → open validation reports, golden vectors, reproducible benches.
+
+Authoring flows follow a single deterministic path: human-readable [YAML AIR definitions](./air-yaml.md) compile into canonical AIR-IR, adapters lower the IR into backend programs, and proof emission records a manifest plus determinism vector for downstream consumers.
+
 ---
 
 ## 2. Data-Flow Summary
@@ -60,7 +69,7 @@ The proving engine is structured as a **layered stack**:
    * Backend selection (`winterfell`)
 
 2. **Validation**
-   The coordinator loads the backend registry → checks that
+   The coordinator loads the backend registry, resolves a backend via capability matching, and checks that
    `(field, hash, fri, arity)` ∈ `backend.capabilities`.
 
 3. **Trace & Constraint Build**
@@ -81,6 +90,17 @@ The proving engine is structured as a **layered stack**:
 1. Coordinator re-hydrates AIR-IR, public inputs, backend adapter.
 2. Adapter re-computes transcript absorptions and verifies backend-specific proof object.
 3. Deterministic verdict: `verified = true | false`.
+
+### Golden Vector CI
+
+The validation surface integrates a [Golden Vector Registry](./golden-vectors.md).
+Every CI run regenerates reference proofs for each backend, compares digests, and marks `vector_passed = true` only when all capability-compatible adapters produce identical outputs.
+Proof artifacts record the determinism vector manifest, and reports embed the manifest hash so bindings can assert provenance.
+
+### EVM Interop Path
+
+For on-chain consumers, the coordinator exports proof blobs, determinism manifests, and Keccak digests described in [EVM Interop Gadgets](./evm-interop.md).
+Off-chain provers submit `proof.json` containing the determinism vector, while Solidity stubs consume the digest and emit parity checks via `VerifierStub`.
 
 ---
 
@@ -213,6 +233,8 @@ All events append to `events.jsonl` for observability.
 
 Each backend compiles as an independent crate/module, imported via the registry at runtime.
 
+Prebuilt artifacts are optional; reproducibility at the proof layer is mandatory.
+
 ---
 
 ## 10. Future Extensions
@@ -280,3 +302,5 @@ Developers can override presets at runtime using the same CLI/SDK flags as custo
 Profiles are versioned independently (e.g., `zk-auth-pedersen-secret@1.0.0`) and validated on CI alongside the core proof suite.
 
 ---
+
+Aligned with RFC-ZK01 v0.3 — Deterministic, Composable, Backend-Agnostic.
