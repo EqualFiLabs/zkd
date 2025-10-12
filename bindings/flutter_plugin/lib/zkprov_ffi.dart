@@ -66,7 +66,12 @@ typedef _ZkpFreeNative = ffi.Void Function(ffi.Pointer<ffi.Void>);
 typedef _ZkpFreeDart = void Function(ffi.Pointer<ffi.Void>);
 
 const int _zkpOk = 0;
+const int _zkpErrInvalidArg = 1;
+const int _zkpErrBackend = 2;
+const int _zkpErrProfile = 3;
+const int _zkpErrProofCorrupt = 4;
 const int _zkpErrVerifyFail = 5;
+const int _zkpErrInternal = 6;
 const String _envLibraryPath = 'ZKPROV_LIBRARY_PATH';
 
 final ffi.DynamicLibrary _lib = _openLibrary();
@@ -96,14 +101,6 @@ final ffi.Pointer<ffi.NativeFunction<_ZkpFreeNative>> _zkpFreePtr = _lib
 final _ZkpFreeDart _zkpFree = _zkpFreePtr.asFunction<_ZkpFreeDart>(
   isLeaf: true,
 );
-final ffi.NativeFinalizer _freeFinalizer = ffi.NativeFinalizer(_zkpFreePtr);
-final Expando<_NativeAllocation> _allocationTokens = Expando<_NativeAllocation>(
-  '_zkprov_allocations',
-);
-
-class _NativeAllocation implements ffi.Finalizable {
-  _NativeAllocation();
-}
 
 bool _initialized = false;
 
@@ -122,19 +119,40 @@ class ZkProvConfig {
 }
 
 class ZkProvException implements Exception {
-  ZkProvException(this.operation, this.code, [this.message]);
+  ZkProvException({
+    required this.operation,
+    required this.code,
+    required this.msg,
+    this.detail,
+  });
 
   final String operation;
   final int code;
-  final String? message;
+  final String msg;
+  final String? detail;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'code': code,
+        'msg': msg,
+        if (detail != null && detail!.isNotEmpty) 'detail': detail,
+      };
 
   @override
   String toString() {
-    final base = 'ZkProvException($operation, code=$code)';
-    if (message == null || message!.isEmpty) {
-      return base;
+    final buffer = StringBuffer('ZkProvException(')
+      ..write(operation)
+      ..write(', code=')
+      ..write(code)
+      ..write(')')
+      ..write(': ')
+      ..write(msg);
+    if (detail != null && detail!.isNotEmpty) {
+      buffer
+        ..write(' [detail: ')
+        ..write(detail)
+        ..write(']');
     }
-    return '$base: $message';
+    return buffer.toString();
   }
 }
 
@@ -143,6 +161,13 @@ Future<Map<String, dynamic>> listBackends() => Future.sync(() {
   final outJson = ffi_pkg.calloc<ffi.Pointer<ffi_pkg.Utf8>>();
   try {
     final code = _zkpListBackends(outJson);
+    if (code != _zkpOk) {
+      final ptr = outJson.value;
+      if (!_isNull(ptr)) {
+        _freeNative(ptr.cast());
+        outJson.value = ffi.Pointer<ffi_pkg.Utf8>.fromAddress(0);
+      }
+    }
     _checkResult('zkp_list_backends', code);
     return _decodeJsonPointer(outJson.value);
   } finally {
@@ -155,6 +180,13 @@ Future<Map<String, dynamic>> listProfiles() => Future.sync(() {
   final outJson = ffi_pkg.calloc<ffi.Pointer<ffi_pkg.Utf8>>();
   try {
     final code = _zkpListProfiles(outJson);
+    if (code != _zkpOk) {
+      final ptr = outJson.value;
+      if (!_isNull(ptr)) {
+        _freeNative(ptr.cast());
+        outJson.value = ffi.Pointer<ffi_pkg.Utf8>.fromAddress(0);
+      }
+    }
     _checkResult('zkp_list_profiles', code);
     return _decodeJsonPointer(outJson.value);
   } finally {
@@ -186,6 +218,18 @@ Future<ZkProvProveResult> prove(ZkProvConfig cfg) => Future.sync(() {
       outProofLen,
       outMeta,
     );
+    if (code != _zkpOk) {
+      final proofPtr = outProof.value;
+      if (!_isNull(proofPtr)) {
+        _freeNative(proofPtr.cast());
+        outProof.value = ffi.Pointer<ffi.Uint8>.fromAddress(0);
+      }
+      final metaPtr = outMeta.value;
+      if (!_isNull(metaPtr)) {
+        _freeNative(metaPtr.cast());
+        outMeta.value = ffi.Pointer<ffi_pkg.Utf8>.fromAddress(0);
+      }
+    }
     _checkResult('zkp_prove', code);
     final proofPtr = outProof.value;
     final proofLen = outProofLen.value;
@@ -203,8 +247,9 @@ Future<ZkProvProveResult> prove(ZkProvConfig cfg) => Future.sync(() {
         meta: meta,
       );
     }
-    final proof = proofPtr.asTypedList(proofLen);
-    _attachFinalizer(proof, proofPtr.cast());
+    final proofView = proofPtr.asTypedList(proofLen);
+    final proof = Uint8List.fromList(proofView);
+    _freeNative(proofPtr.cast());
     return ZkProvProveResult(
       proof: proof,
       digest: digest,
@@ -254,14 +299,27 @@ Future<ZkProvVerifyResult> verify(ZkProvConfig cfg, Uint8List proof) =>
           proof.length,
           outMeta,
         );
+        if (code != _zkpOk && code != _zkpErrVerifyFail) {
+          final metaPtr = outMeta.value;
+          if (!_isNull(metaPtr)) {
+            _freeNative(metaPtr.cast());
+            outMeta.value = ffi.Pointer<ffi_pkg.Utf8>.fromAddress(0);
+          }
+        }
         if (code == _zkpErrVerifyFail) {
+          final metaPtr = outMeta.value;
+          Map<String, dynamic> meta;
+          if (_isNull(metaPtr)) {
+            meta = <String, dynamic>{};
+          } else {
+            meta = _decodeJsonPointer(metaPtr);
+          }
+          meta.putIfAbsent('error_code', () => code);
+          meta.putIfAbsent('message', () => _errorMessageForCode(code));
           return ZkProvVerifyResult(
             verified: false,
             digest: '',
-            meta: <String, dynamic>{
-              'error_code': code,
-              'message': 'verification failed',
-            },
+            meta: meta,
           );
         }
         _checkResult('zkp_verify', code);
@@ -294,11 +352,35 @@ void _ensureInitialized() {
   _initialized = true;
 }
 
-void _checkResult(String operation, int code) {
+void _checkResult(String operation, int code, {String? detail}) {
   if (code == _zkpOk) {
     return;
   }
-  throw ZkProvException(operation, code);
+  final effectiveDetail = detail ?? 'operation=$operation';
+  throw ZkProvException(
+    operation: operation,
+    code: code,
+    msg: _errorMessageForCode(code),
+    detail: effectiveDetail,
+  );
+}
+
+String _errorMessageForCode(int code) {
+  switch (code) {
+    case _zkpErrInvalidArg:
+      return 'Invalid argument';
+    case _zkpErrBackend:
+      return 'Backend error';
+    case _zkpErrProfile:
+      return 'Profile error';
+    case _zkpErrProofCorrupt:
+      return 'Proof corrupt';
+    case _zkpErrVerifyFail:
+      return 'Verification failed';
+    case _zkpErrInternal:
+    default:
+      return 'Internal error';
+  }
 }
 
 ffi.DynamicLibrary _openLibrary() {
@@ -357,15 +439,18 @@ void _freeNative(ffi.Pointer<ffi.Void> ptr) {
   _zkpFree(ptr);
 }
 
+<<<<<<< ours
 void _attachFinalizer(Object owner, ffi.Pointer<ffi.Void> ptr) {
   if (_isNull(ptr)) {
     return;
   }
-  final token = _NativeAllocation();
-  _freeFinalizer.attach(token, ptr);
+  final token = Object();
+  _freeFinalizer.attach(owner, ptr, detach: token);
   _allocationTokens[owner] = token;
 }
 
+=======
+>>>>>>> theirs
 Map<String, dynamic> _decodeJsonPointer(ffi.Pointer<ffi_pkg.Utf8> ptr) {
   if (_isNull(ptr)) {
     return <String, dynamic>{};
