@@ -15,11 +15,16 @@ ZKProv Dart FFI bindings.
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.vendored_frameworks = 'ZkProv.xcframework'
+  s.frameworks = 'Foundation'
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'
 
   # Flutter.framework does not contain a i386 slice.
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
+  s.pod_target_xcconfig = {
+    'DEFINES_MODULE' => 'YES',
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+    'OTHER_LDFLAGS' => '-lc++'
+  }
   s.swift_version = '5.0'
 
   # If your plugin requires a privacy manifest, for example if it uses any
