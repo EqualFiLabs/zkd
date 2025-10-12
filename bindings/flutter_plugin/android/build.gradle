@@ -39,7 +39,10 @@ android {
     }
 
     sourceSets {
-        main.java.srcDirs += "src/main/kotlin"
+        main {
+            java.srcDirs += "src/main/kotlin"
+            jniLibs.srcDirs += "src/main/jniLibs"
+        }
         test.java.srcDirs += "src/test/kotlin"
     }
 
@@ -62,5 +65,31 @@ android {
                showStandardStreams = true
             }
         }
+    }
+}
+
+def zkprovJniRoot = file("src/main/jniLibs")
+
+tasks.register("verifyZkprovJniLibs") {
+    doLast {
+        if (!zkprovJniRoot.exists()) {
+            throw new GradleException("Expected native libraries under ${zkprovJniRoot.absolutePath}")
+        }
+
+        def abiDirs = zkprovJniRoot.listFiles()?.findAll { it.isDirectory() } ?: []
+        if (abiDirs.isEmpty()) {
+            throw new GradleException("No ABI directories found under ${zkprovJniRoot.absolutePath}")
+        }
+
+        def missing = abiDirs.findAll { !new File(it, "libzkprov.so").exists() }
+        if (!missing.isEmpty()) {
+            throw new GradleException("Missing libzkprov.so for ABIs: ${missing.collect { it.name }.join(', ')}")
+        }
+    }
+}
+
+tasks.whenTaskAdded { task ->
+    if (task.name.startsWith("merge") && task.name.endsWith("JniLibFolders")) {
+        task.dependsOn(tasks.named("verifyZkprovJniLibs"))
     }
 }
