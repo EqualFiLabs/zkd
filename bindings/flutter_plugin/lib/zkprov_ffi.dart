@@ -101,6 +101,15 @@ final ffi.Pointer<ffi.NativeFunction<_ZkpFreeNative>> _zkpFreePtr = _lib
 final _ZkpFreeDart _zkpFree = _zkpFreePtr.asFunction<_ZkpFreeDart>(
   isLeaf: true,
 );
+final ffi.NativeFinalizer _freeFinalizer = ffi.NativeFinalizer(_zkpFreePtr);
+final Expando<_NativeAllocation> _allocationTokens =
+    Expando<_NativeAllocation>(
+  '_zkprov_allocations',
+);
+
+class _NativeAllocation implements ffi.Finalizable {
+  _NativeAllocation();
+}
 
 bool _initialized = false;
 
@@ -439,18 +448,15 @@ void _freeNative(ffi.Pointer<ffi.Void> ptr) {
   _zkpFree(ptr);
 }
 
-<<<<<<< ours
 void _attachFinalizer(Object owner, ffi.Pointer<ffi.Void> ptr) {
   if (_isNull(ptr)) {
     return;
   }
-  final token = Object();
-  _freeFinalizer.attach(owner, ptr, detach: token);
+  final token = _NativeAllocation();
+  _freeFinalizer.attach(token, ptr);
   _allocationTokens[owner] = token;
 }
 
-=======
->>>>>>> theirs
 Map<String, dynamic> _decodeJsonPointer(ffi.Pointer<ffi_pkg.Utf8> ptr) {
   if (_isNull(ptr)) {
     return <String, dynamic>{};

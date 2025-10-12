@@ -39,6 +39,7 @@ class DemoHomePage extends StatefulWidget {
 
 class _DemoHomePageState extends State<DemoHomePage> {
   int? _backendCount;
+  String? _firstBackendId;
   String _digest = '';
   bool? _verified;
   Uint8List? _proof;
@@ -97,10 +98,13 @@ class _DemoHomePageState extends State<DemoHomePage> {
     try {
       await _ensureAirAsset();
       final backends = await listBackends();
-      final count = _extractBackendCount(backends);
+      final summary = _summarizeBackends(backends);
       _updateState(() {
-        _backendCount = count;
-        _statusMessage = 'Init complete';
+        _backendCount = summary.count;
+        _firstBackendId = summary.firstId;
+        _statusMessage = summary.count > 0
+            ? 'Init complete — ${summary.count} backend(s)'
+            : 'Init complete';
       });
     } catch (error) {
       _updateState(() {
@@ -129,6 +133,7 @@ class _DemoHomePageState extends State<DemoHomePage> {
         _proof = result.proof;
         _digest = result.digest;
         _statusMessage = 'Proof ready (len=${result.proofLength})';
+        _verified = null;
       });
     } catch (error) {
       _updateState(() {
@@ -179,14 +184,43 @@ class _DemoHomePageState extends State<DemoHomePage> {
     }
   }
 
+  Future<void> _handleTamperProof() async {
+    if (_verifyInProgress || _proveInProgress) {
+      return;
+    }
+    final proof = _proof;
+    if (proof == null || proof.isEmpty) {
+      _updateState(() {
+        _statusMessage = 'Generate a proof before tampering';
+      });
+      return;
+    }
+    final mutated = Uint8List.fromList(proof);
+    mutated[0] = (mutated[0] ^ 0x01) & 0xff;
+    _updateState(() {
+      _proof = mutated;
+      _verified = null;
+      _statusMessage = 'Proof tampered — flipped byte 0';
+    });
+    await _handleVerify();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final backendDisplay = _backendCount == null
-        ? '-'
-        : _backendCount.toString();
-    final digestDisplay = _digest.isEmpty ? '-' : _digest;
+    final backendDisplay =
+        _backendCount == null ? '-' : _backendCount.toString();
+    final firstBackendDisplay =
+        (_firstBackendId == null || _firstBackendId!.isEmpty)
+            ? '-'
+            : _firstBackendId!;
+    final digestDisplay = _digest.isEmpty ? '-' : _formatDigest(_digest);
     final verifiedDisplay =
         _verified == null ? '-' : _verified == true ? 'true' : 'false';
+    final verificationColor = _verified == null
+        ? Theme.of(context).textTheme.bodyMedium?.color
+        : _verified == true
+            ? Colors.green.shade700
+            : Colors.red.shade600;
 
     return Scaffold(
       appBar: AppBar(
@@ -194,67 +228,151 @@ class _DemoHomePageState extends State<DemoHomePage> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Backends JSON length: $backendDisplay'),
-            const SizedBox(height: 8),
-            Text('Last digest D: $digestDisplay'),
-            const SizedBox(height: 8),
-            Text('Verified: $verifiedDisplay'),
-            const SizedBox(height: 24),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                ElevatedButton(
-                  onPressed: _initInProgress ? null : _handleInit,
-                  child: _initInProgress
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Init'),
-                ),
-                ElevatedButton(
-                  onPressed: _proveInProgress ? null : _handleProve,
-                  child: _proveInProgress
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Prove'),
-                ),
-                ElevatedButton(
-                  onPressed: _verifyInProgress ? null : _handleVerify,
-                  child: _verifyInProgress
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Verify'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Text(_statusMessage ?? 'Ready'),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Backends available: $backendDisplay'),
+              const SizedBox(height: 4),
+              Text('First backend id: $firstBackendDisplay'),
+              const SizedBox(height: 12),
+              Text('Digest D: $digestDisplay'),
+              const SizedBox(height: 12),
+              Text(
+                'Verified: $verifiedDisplay',
+                style: TextStyle(color: verificationColor),
+              ),
+              const SizedBox(height: 24),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  ElevatedButton(
+                    onPressed: _initInProgress ? null : _handleInit,
+                    child: _initInProgress
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Init'),
+                  ),
+                  ElevatedButton(
+                    onPressed: _proveInProgress ? null : _handleProve,
+                    child: _proveInProgress
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Prove'),
+                  ),
+                  ElevatedButton(
+                    onPressed: _verifyInProgress ? null : _handleVerify,
+                    child: _verifyInProgress
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Verify'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        _verifyInProgress ? null : () => _handleTamperProof(),
+                    icon: const Icon(Icons.warning_amber_rounded),
+                    label: const Text('Tamper proof'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Text(_statusMessage ?? 'Ready'),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-int _extractBackendCount(Map<String, dynamic> json) {
+class _BackendListSummary {
+  const _BackendListSummary({required this.count, this.firstId});
+
+  final int count;
+  final String? firstId;
+}
+
+_BackendListSummary _summarizeBackends(Map<String, dynamic> json) {
   final dynamic directItems = json['items'] ?? json['backends'];
   if (directItems is List) {
-    return directItems.length;
+    final String? firstId =
+        directItems.isNotEmpty ? _backendIdFromEntry(directItems.first) : null;
+    return _BackendListSummary(
+      count: directItems.length,
+      firstId: firstId,
+    );
   }
   if (directItems is Map) {
-    return directItems.length;
+    String? firstId;
+    if (directItems.isNotEmpty) {
+      final entry = directItems.entries.first;
+      firstId =
+          _backendIdFromEntry(entry.value) ?? _stringValue(entry.key);
+    }
+    return _BackendListSummary(
+      count: directItems.length,
+      firstId: firstId,
+    );
   }
-  return json.length;
+
+  final int count = json['count'] is int
+      ? json['count'] as int
+      : (directItems is Iterable
+          ? directItems.length
+          : json.length);
+  String? firstId;
+  final dynamic candidates = directItems ?? json['default_backend'];
+  if (candidates != null) {
+    firstId = _backendIdFromEntry(candidates);
+  }
+  firstId ??= _backendIdFromEntry(json['default']) ??
+      _findFirstBackendId(json.values);
+  return _BackendListSummary(count: count, firstId: firstId);
+}
+
+String? _backendIdFromEntry(dynamic entry) {
+  if (entry is Map) {
+    final dynamic id =
+        entry['backend'] ?? entry['backend_id'] ?? entry['id'] ?? entry['name'];
+    return _stringValue(id);
+  }
+  if (entry is List && entry.isNotEmpty) {
+    return _backendIdFromEntry(entry.first);
+  }
+  return _stringValue(entry);
+}
+
+String? _stringValue(dynamic value) {
+  if (value is String && value.isNotEmpty) {
+    return value;
+  }
+  return null;
+}
+
+String? _findFirstBackendId(Iterable<dynamic> values) {
+  for (final value in values) {
+    final candidate = _backendIdFromEntry(value);
+    if (candidate != null) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+String _formatDigest(String digest) {
+  if (digest.length <= 16) {
+    return digest;
+  }
+  const keep = 8;
+  return '${digest.substring(0, keep)}…${digest.substring(digest.length - keep)}';
 }
