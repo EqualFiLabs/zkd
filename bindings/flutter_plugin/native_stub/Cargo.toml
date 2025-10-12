@@ -1,0 +1,17 @@
+[package]
+name = "zkprov-stub"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = []
+
+[lib]
+name = "zkprov"
+crate-type = ["cdylib"]
+
+[profile.release]
+panic = "abort"
+
+[profile.dev]
+panic = "abort"

@@ -14,6 +14,7 @@ ZKProv Dart FFI bindings.
   s.author           = { 'ZKProv' => 'opensource@zkprov.dev' }
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
+  s.vendored_frameworks = 'ZkProv.xcframework'
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'
 
