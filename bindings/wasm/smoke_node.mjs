@@ -1,5 +1,5 @@
 import { init } from './loader.js';
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const wasmPath = resolve('./bindings/wasm/zkprov_wasi.wasm');
@@ -28,3 +28,17 @@ console.log('D=', meta.digest, 'len=', meta.proof_len);
 const vr = await z.verify(cfg, proof);
 console.log('verified=', vr.verified, 'D=', vr.meta.digest);
 if (!vr.verified) process.exit(1);
+
+// Exercise proveFromBuffers using the same configuration but bypassing the host FS paths.
+const airBytes = await readFile(airPathHost);
+const cfgBuffers = { ...cfg };
+const { proof: proofFromBuffers, meta: metaFromBuffers } = await z.proveFromBuffers(
+  cfgBuffers,
+  airBytes,
+  { demo: true, n: 7 }
+);
+console.log('buffers D=', metaFromBuffers.digest, 'len=', metaFromBuffers.proof_len);
+
+const vrBuffers = await z.verifyFromBuffers(cfg, airBytes, { demo: true, n: 7 }, proofFromBuffers);
+console.log('buffers verified=', vrBuffers.verified, 'D=', vrBuffers.meta.digest);
+if (!vrBuffers.verified) process.exit(1);

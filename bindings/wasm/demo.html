@@ -7,11 +7,7 @@
       import { init } from './loader.js';
 
       // We need a WASI polyfill in the browser; loader.js imports @wasmer/wasi via unpkg.
-      const z = await init({ wasmPath: './zkprov_wasi.wasm', preopens: { '/work': '/' } });
-
-      // For demo, use an embedded AIR fetched as text, then write into a virtual FS is non-trivial with polyfill.
-      // Easiest path: place toy.air next to this page and access as /work/examples/air/toy.air via fetch-less FS support
-      // Some polyfills map URLs – if not, adjust loader to accept the AIR JSON directly in future tasks.
+      const z = await init({ wasmPath: './zkprov_wasi.wasm' });
 
       const cfg = {
         backendId: 'native@0.0',
@@ -27,9 +23,10 @@
       try {
         const backs = await z.listBackends();
         out.textContent = 'backends: ' + JSON.stringify(backs) + '\n';
-        const { proof, meta } = await z.prove(cfg);
+        const airBytes = await fetch('./examples/air/toy.air').then((r) => r.arrayBuffer());
+        const { proof, meta } = await z.proveFromBuffers(cfg, airBytes, '{"demo":true,"n":7}');
         out.textContent += `D=${meta.digest} len=${meta.proof_len}\n`;
-        const vr = await z.verify(cfg, proof);
+        const vr = await z.verifyFromBuffers(cfg, airBytes, '{"demo":true,"n":7}', proof);
         out.textContent += `verified=${vr.verified} D=${vr.meta.digest}\n`;
       } catch (e) {
         out.textContent += 'ERROR: ' + e;
