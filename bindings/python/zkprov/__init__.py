@@ -4,9 +4,20 @@ Public API will expose: list_backends, list_profiles, prove, verify.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import ctypes
+
+from ctypes import (
+    POINTER,
+    c_char_p,
+    c_int,
+    c_uint32,
+    c_uint64,
+    c_uint8,
+    c_void_p,
+)
 
 
 __all__ = ["list_backends", "list_profiles", "prove", "verify"]
@@ -54,3 +65,77 @@ def _load_lib() -> ctypes.CDLL:
 
 
 _LIB = _load_lib()
+
+
+# C prototypes:
+# int32_t zkp_init(void);
+_LIB.zkp_init.restype = c_int
+_LIB.zkp_init.argtypes = []
+
+# int32_t zkp_list_backends(char** out_json);
+_LIB.zkp_list_backends.restype = c_int
+_LIB.zkp_list_backends.argtypes = [POINTER(c_char_p)]
+
+_LIB.zkp_list_profiles.restype = c_int
+_LIB.zkp_list_profiles.argtypes = [POINTER(c_char_p)]
+
+# int32_t zkp_prove(..., uint8_t** out_proof, uint64_t* out_len, char** out_json_meta);
+_LIB.zkp_prove.restype = c_int
+_LIB.zkp_prove.argtypes = [
+    c_char_p,
+    c_char_p,
+    c_char_p,
+    c_uint32,
+    c_char_p,
+    c_char_p,
+    c_char_p,
+    POINTER(POINTER(c_uint8)),
+    POINTER(c_uint64),
+    POINTER(c_char_p),
+]
+
+# int32_t zkp_verify(..., const uint8_t* proof, uint64_t len, char** out_json_meta);
+_LIB.zkp_verify.restype = c_int
+_LIB.zkp_verify.argtypes = [
+    c_char_p,
+    c_char_p,
+    c_char_p,
+    c_uint32,
+    c_char_p,
+    c_char_p,
+    c_char_p,
+    POINTER(c_uint8),
+    c_uint64,
+    POINTER(c_char_p),
+]
+
+# void zkp_free(void*);
+_LIB.zkp_free.restype = None
+_LIB.zkp_free.argtypes = [c_void_p]
+
+
+def _decode_json(ptr: c_char_p):
+    s = ""
+    try:
+        if ptr:
+            raw = ctypes.cast(ptr, c_char_p).value
+            s = raw.decode("utf-8") if raw else ""
+            _LIB.zkp_free(ptr)  # free as per API contract
+        return json.loads(s or "{}")
+    except Exception as e:  # pragma: no cover - defensive guard
+        raise RuntimeError(f"Invalid JSON from native: {e}\n{s!r}")
+
+
+def _err(code, payload):
+    # payload is dict from native JSON envelope (if any)
+    msg = payload.get("msg") if isinstance(payload, dict) else str(payload)
+    detail = payload.get("detail") if isinstance(payload, dict) else None
+    raise RuntimeError(
+        f"[ZKProv err {code}] {msg}" + (f" ({detail})" if detail else "")
+    )
+
+
+# one-time init (idempotent)
+_rc = _LIB.zkp_init()
+if _rc != 0:
+    raise RuntimeError(f"zkp_init failed: code={_rc}")
