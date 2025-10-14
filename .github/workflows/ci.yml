@@ -30,53 +30,69 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
+
       - name: Install Foundry toolchain
         uses: foundry-rs/foundry-toolchain@v1
+
       - name: Install Rust target
         run: rustup target add ${{ matrix.rust-target }}
+
+      # Linux toolchain bits
       - name: Install clang (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y clang
+
       - name: Build workspace
         run: cargo build --workspace
+
       - name: Header sanity check
+        if: runner.os != 'Windows'
         run: clang -Wall -fsyntax-only include/zkprov.h
+
       - name: Build FFI libraries (release)
         run: cargo build -p zkprov-ffi-c --release --target ${{ matrix.rust-target }}
+
       - name: Upload FFI shared library artifact
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.shared-artifact }}
           path: ${{ matrix.shared-path }}
+
       - name: Upload FFI static library artifact
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.static-artifact }}
           path: ${{ matrix.static-path }}
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
       - name: Install Node dependencies
         working-directory: bindings/node
         env:
           ZKPROV_STATIC: ${{ github.workspace }}/${{ matrix.static-path }}
         run: npm ci
+
       - name: Build Node addon
         working-directory: bindings/node
         run: npx node-gyp rebuild
         env:
           ZKPROV_STATIC: ${{ github.workspace }}/${{ matrix.static-path }}
+
       - name: Node bindings tests
         working-directory: bindings/node
         env:
           ZKPROV_STATIC: ${{ github.workspace }}/${{ matrix.static-path }}
         run: npm test
+
       - name: Run ffi_roundtrip C test (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -84,9 +100,48 @@ jobs:
             -L target/x86_64-unknown-linux-gnu/release -lzkprov \
             -Wl,-rpath,$(pwd)/target/x86_64-unknown-linux-gnu/release -o ffi_roundtrip
           LD_LIBRARY_PATH=$(pwd)/target/x86_64-unknown-linux-gnu/release ./ffi_roundtrip
+
       - name: Test
         run: cargo test --workspace --all-features -- --nocapture
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+
       - name: Format
         run: cargo fmt --all -- --check
+
+  wasi-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Add WASI target
+        run: rustup target add wasm32-wasip1
+
+      - name: Build WASI (release, JSON artifacts)
+        run: |
+          set -euo pipefail
+          cargo install jq --locked >/dev/null 2>&1 || true
+          # Build and capture artifact filenames from cargo JSON
+          cargo build -p zkprov-ffi-c --release --target wasm32-wasip1 --message-format=json \
+            | tee cargo.jsonl \
+            | jq -r '
+                select(.reason=="compiler-artifact")
+                | select((.target.kind[] | contains("cdylib") or contains("bin")))
+                | .filenames[]' > wasm_files.txt
+          echo "Emitted files:"
+          cat wasm_files.txt
+
+          # Pick the first .wasm (there should normally be exactly one)
+          WASM_PATH=$(grep -m1 '\.wasm$' wasm_files.txt || true)
+          if [ -z "${WASM_PATH}" ]; then
+            echo "No .wasm artifact found. Listing target dir for clues:" >&2
+            ls -lah target/wasm32-wasip1/release || true
+            exit 1
+          fi
+          echo "Detected wasm artifact: ${WASM_PATH}"
+
+          mkdir -p bindings/wasm
+          cp "${WASM_PATH}" bindings/wasm/zkprov_wasi.wasm
+          ls -lah bindings/wasm
