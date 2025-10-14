@@ -9,7 +9,10 @@ import os
 import sys
 import ctypes
 
+from pathlib import Path
+
 from ctypes import (
+    CDLL,
     POINTER,
     c_char_p,
     c_int,
@@ -21,47 +24,24 @@ from ctypes import (
 
 
 __all__ = ["list_backends", "list_profiles", "prove", "verify"]
+HERE = Path(__file__).resolve().parent
+NAME = {"darwin": "libzkprov.dylib", "win32": "zkprov.dll"}.get(
+    sys.platform, "libzkprov.so"
+)
 
 
-def _load_lib() -> ctypes.CDLL:
+def _load_lib() -> CDLL:
     """Resolve and load the native ZKProv library."""
 
-    candidates: list[str] = []
-    env_path = os.getenv("ZKPROV_LIB")
-    if env_path:
-        candidates.append(env_path)
+    bundled = HERE / NAME
+    if bundled.exists():
+        return CDLL(str(bundled))
 
-    if sys.platform == "darwin":
-        names = ["libzkprov.dylib"]
-    elif sys.platform == "win32":
-        names = ["zkprov.dll"]
-    else:
-        names = ["libzkprov.so"]
+    env = os.environ.get("ZKPROV_LIB")
+    if env:
+        return CDLL(env)
 
-    cwd = os.getcwd()
-    for name in names:
-        candidates.append(os.path.join(cwd, name))
-
-    if sys.platform == "darwin" or sys.platform.startswith("linux"):
-        candidates.extend(names)
-
-    tried: list[str] = []
-    last_err: OSError | None = None
-    seen: set[str] = set()
-
-    for path in candidates:
-        if not path or path in seen:
-            continue
-        seen.add(path)
-        tried.append(path)
-        try:
-            return ctypes.CDLL(path)
-        except OSError as exc:  # pragma: no cover - platform dependent
-            last_err = exc
-
-    raise OSError(
-        f"Failed to load ZKProv native lib; tried {tried}: {last_err}"
-    )
+    return CDLL(NAME)
 
 
 _LIB = _load_lib()

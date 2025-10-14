@@ -14,3 +14,6 @@ __pycache__/
 .env
 build/
 dist/
+bindings/python/zkprov/*.so
+bindings/python/zkprov/*.dylib
+bindings/python/zkprov/*.dll
