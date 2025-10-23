@@ -50,7 +50,8 @@ Provide a **universal STARK proving system** capable of:
 * Winterfell adapter (v0.6)
 * Proof profiles: `dev-fast`, `balanced`, `secure`
 * CLI: `zkd prove`, `zkd verify`, `zkd backend ls`
-* C ABI and FFI bindings (Node/TS, Python, Go, .NET, Swift/iOS, WASM) with CI pre-built libraries
+* Stable C ABI + maintained CLI/SDK surface with official Phase-0 bindings for Python, Flutter/Dart, and WASI (Node/TS addon remains part of the CLI toolchain)
+* DIY bindings cookbook detailing Go, .NET, Java/Kotlin, and Swift integration paths until official support returns in the Ecosystem phase
 * Validation pipeline and `ValidationReport` emission
 * Full test suite and golden vectors
 * Docs: RFC, architecture, interfaces, validation, test-plan
@@ -73,7 +74,7 @@ Provide a **universal STARK proving system** capable of:
 ✅ Cross-backend digest `D` identical
 ✅ CI matrix passes with 80%+ coverage
 ✅ Validation report emitted for all runs
-✅ FFI round-trip proofs succeed for toy/merkle/runsum across supported bindings and operating systems
+✅ FFI round-trip proofs succeed for toy/merkle/runsum across the supported Phase-0 bindings (C ABI harness, Python, Flutter/Dart, WASI) and operating systems
 ✅ **Determinism Manifest** embedded and validated in every proof (manifest hash present in `ValidationReport`).
 ✅ **Backend auto-selection** works per *Adapter Selection Rule*; incompatible configs fail with descriptive `NoCompatibleBackend`.
 ✅ **Golden vector parity**: identical digests across **native** and **Winterfell** for all Phase 0 vectors.
@@ -194,7 +195,7 @@ Build upon the new crypto/commitment primitives to enable cross-backend parity w
 * Official examples repository
 * Online documentation site (`docs.zkprov.dev`)
 * Tutorials + code walkthroughs
-* Multi-language bindings (Phase 0 ships minimal FFI wrappers; Phase 4 adds idiomatic SDKs for TypeScript, Python, Go, .NET, Swift)
+* Multi-language bindings (Phase 0 ships C ABI + Python/Flutter/WASI; Phase 4 reintroduces official Go, .NET, Java/Kotlin, and Swift packages once resourced)
 * Public CI matrix (GitHub Actions / GCP runners)
 
 ### Deliverables

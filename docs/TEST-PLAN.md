@@ -26,7 +26,8 @@ This plan defines the **unit**, **integration**, **cross-backend**, **negative**
 * **CPU Features:** AVX2 preferred (falls back if unavailable)
 * **Profiles under test:** `dev-fast`, `balanced`, `secure`
 * **Backends under test (Phase 0):** `native`, `winterfell@0.6`
-* **Language runtimes:** Node.js LTS (18/20), Python 3.10+, Go 1.20+, .NET 6+, Swift 5.8+, WASI runtime (wasmtime ≥ 15)
+* **Language runtimes (official):** Node.js LTS (18/20), Python 3.10+, Flutter 3.19+/Dart 3.2+, WASI runtime (wasmtime ≥ 15)
+* **DIY surfaces (non-gating):** Go 1.20+, .NET 6+, Java/Kotlin (JDK 17 + Android Gradle Plugin 8), Swift 5.8+ — validated via the bindings cookbook rather than CI
 * **Shared libraries:** Prebuilt `libzkprov` artifacts for Linux (x86_64, aarch64), macOS (universal), Windows (MSVC) plus `.wasm` for WASI
 
 ---
@@ -342,15 +343,13 @@ See `validation.md` for report schema.
 * **C harness round-trip:** Build and run `tests/ffi/c_roundtrip.c` against `libzkprov` to call `zkp_init`, `zkp_prove`, and `zkp_verify` on toy and merkle fixtures; assert return codes are `NULL` and free all pointers via `zkp_free`.
 * **Node/TypeScript binding test:** Execute the N-API addon’s jest/tap suite to prove and verify the toy AIR asynchronously; compare digests with CLI fixtures.
 * **Python binding test:** Use `pytest` with `ctypes`/`cffi` wrapper to call the shared library, deserialize JSON responses, and ensure proof buffers are freed explicitly.
-* **Go binding test:** Run `go test ./bindings/go/...` to compile the cgo wrapper and prove/verify toy + merkle programs.
-* **.NET binding test:** Execute `dotnet test` for the P/Invoke wrapper, ensuring `SafeHandle` disposes buffers.
-* **Swift/iOS test:** Build the Swift Package Example (macOS + iOS simulator) verifying a recursive proof via the Swift binding.
+* **Flutter/Dart plugin test:** Run `flutter test` under `bindings/flutter_plugin` to exercise Android/iOS FFI glue and confirm `zkp_free` is called for buffers.
 * **WASI/WebAssembly test:** Run `wasmtime` against the wasm binding to confirm `zkp_verify` passes for the toy fixture in a WASI sandbox.
-* **Cross-language parity:** Generate a proof through the CLI/SDK and verify it in each binding (and vice versa) asserting identical `D` digests and seeds.
-* **Memory leak checks:** Run Valgrind (Linux), Instruments (macOS), and `dotnet-counters` to ensure repeated FFI calls do not leak when `zkp_free` is used.
-* **Callback test:** Register an event callback from each binding, run a proof, and assert receipt of progress JSONL messages with monotonically increasing `percent`.
+* **Cross-language parity:** Generate a proof through the CLI/SDK and verify it via Node, Python, Flutter, and WASI surfaces asserting identical `D` digests and seeds.
+* **Memory leak checks:** Run Valgrind (Linux), Instruments (macOS), and Dart DevTools memory profiler to ensure repeated FFI calls do not leak when `zkp_free` is used.
+* **Callback test:** Register an event callback from each official binding, run a proof, and assert receipt of progress JSONL messages with monotonically increasing `percent`.
 
-All bindings publish CI jobs that build language packages, link against the shipped `libzkprov` artifacts, and upload logs/artifacts mirroring CLI/SDK tests.
+DIY bindings (Go, .NET, Java/Kotlin, Swift) execute cookbook conformance snippets as part of their respective ecosystems but remain non-blocking for CI; failures there trigger documentation updates rather than release blocks.
 
 ---
 
@@ -383,7 +382,7 @@ This satisfies the PPP execution & iteration flow with passing test suite and cl
 * [ ] **Fuzz**: no panics; rejects invalid FRI ranges; parser stable
 * [ ] **Performance**: within expected ranges; no OOM
 * [ ] **Determinism**: identical seeds/headers across runs and hosts
-* [ ] **FFI**: C ABI + Node/TS, Python, Go, .NET, Swift, WASI bindings pass round-trip and parity tests across supported OSes
+* [ ] **FFI**: C ABI harness + Node/TS, Python, Flutter/Dart, and WASI bindings pass round-trip and parity tests across supported OSes; cookbook targets publish optional conformance reports
 * [ ] **CI Gates**: matrix passes; coverage thresholds met
 
 ---

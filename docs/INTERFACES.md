@@ -169,7 +169,9 @@ Each error implements `Display` and serializes as a JSON object:
 
 ## 3. C ABI & Multi-Language Bindings
 
-The prover exports a stable C ABI so that non-Rust applications can embed the engine via shared libraries. Generated bindings for Node/TypeScript, Python, Go, .NET, Swift/iOS, and WASI map directly onto this surface.
+The prover exports a stable C ABI so that non-Rust applications can embed the engine via shared libraries. Official Phase-0 bindings maintained by the core team cover Python (ctypes/cffi), Flutter/Dart (platform plugin), Node/TypeScript (N-API addon), and WASI (browser/serverless module) in addition to the raw C surface.
+
+> **Availability:** Go (cgo), .NET (P/Invoke), Java/Kotlin (JNI + AAR), and Swift/iOS (SwiftPM) integrations are deferred to the Ecosystem phase. Teams needing them today should rely on the DIY bindings cookbook; these targets are non-normative for determinism guarantees, which remain anchored at the C ABI.
 
 ### 3.1 Exported Symbols
 
@@ -180,7 +182,7 @@ The prover exports a stable C ABI so that non-Rust applications can embed the en
 | `zkp_verify` | `zkp_error* zkp_verify(zkp_context* ctx, const char* request_json, const uint8_t* proof_ptr, size_t proof_len);` | Replays the transcript and verifies the supplied proof blob. |
 | `zkp_list_backends` | `const char* zkp_list_backends(zkp_context* ctx);` | Returns a JSON string describing registered backends and capabilities. Caller frees via `zkp_free`. |
 | `zkp_list_profiles` | `const char* zkp_list_profiles(zkp_context* ctx);` | Returns JSON describing available profiles. |
-| `zkp_version` | `const char* zkp_version(void);` | Returns a static UTF-8 string with semantic version + git hash. |
+| `zkp_version` | `int32_t zkp_version(char **out_json);` | Allocates a JSON envelope containing semantic version (and optional git hash). Caller frees via `zkp_free`. |
 | `zkp_set_callback` | `void zkp_set_callback(zkp_context* ctx, zkp_event_cb cb, void* user_data);` | Registers a callback invoked for JSONL progress messages. |
 | `zkp_cancel` | `void zkp_cancel(zkp_context* ctx);` | Requests cancellation of any in-flight proving job. |
 | `zkp_free` | `void zkp_free(const void* ptr);` | Releases memory allocated by the prover (strings, buffers). |
@@ -195,7 +197,7 @@ All fallible functions return `NULL` on success. Errors are conveyed as heap-all
 { "error": "CapabilityMismatch", "message": "hash=keccak not supported by plonky2" }
 ```
 
-Bindings unwrap these into native error types. The caller must release the returned pointer via `zkp_free`. Simple status queries such as `zkp_version` return static strings and never allocate.
+Bindings unwrap these into native error types. The caller must release the returned pointer via `zkp_free`, including helper calls such as `zkp_version`.
 
 ### 3.3 Memory Management
 
@@ -249,14 +251,16 @@ int main(void) {
 
 Language bindings publish ergonomic wrappers around these calls:
 
-* **Node/TypeScript** — N-API addon exposing async `prove()`/`verify()` Promises and `loadProgram("*.yaml")` helpers.
-* **Python** — `ctypes`/`cffi` layer returning `dict` objects, `bytes` buffers, and `compile_yaml("balance.yml")` utilities.
-* **Go** — `cgo` package returning Go errors and slices.
-* **.NET** — P/Invoke declarations mapping to `SafeHandle` wrappers.
-* **Swift/iOS** — `@_cdecl` shims bridging to Swift classes for mobile apps.
-* **WASI/WebAssembly** — thin JS/Wasm glue calling the same exported functions.
+* **Node/TypeScript** *(official)* — N-API addon exposing async `prove()`/`verify()` Promises and `loadProgram("*.yaml")` helpers.
+* **Python** *(official)* — `ctypes`/`cffi` layer returning `dict` objects, `bytes` buffers, and `compile_yaml("balance.yml")` utilities.
+* **Flutter/Dart** *(official)* — Dart FFI plugin wrapping the C ABI for Android/iOS with platform channel helpers.
+* **WASI/WebAssembly** *(official)* — thin JS/Wasm glue calling the same exported functions for browser/runtime targets.
+* **Go** *(DIY via cookbook; deferred)* — `cgo` package returning Go errors and slices.
+* **.NET** *(DIY via cookbook; deferred)* — P/Invoke declarations mapping to `SafeHandle` wrappers.
+* **Java/Kotlin** *(DIY via cookbook; deferred)* — JNI or JNA bridge with Android packaging guidance.
+* **Swift/iOS** *(DIY via cookbook; deferred)* — SwiftPM `systemLibrary` target bridging the C ABI.
 
-These bindings add runtime-specific ergonomics but stay in lockstep with the C ABI.
+DIY bindings must continue to free all prover-owned buffers via `zkp_free` and follow the JSON error contract to stay compatible with future releases.
 
 ### 3.7 EVM ABI Helpers
 

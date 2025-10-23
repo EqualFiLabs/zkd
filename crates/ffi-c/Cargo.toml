@@ -14,3 +14,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 zkprov-corelib = { path = "../corelib" }
 zkprov-backend-native = { path = "../backends/native" }
+
+[dev-dependencies]
+libloading = "0.8"
