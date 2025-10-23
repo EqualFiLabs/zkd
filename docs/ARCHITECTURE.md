@@ -16,7 +16,8 @@ The proving engine is structured as a **layered stack**:
 ┌──────────────────────────────────────────────────────────────┐
 │                      CLI / SDK / FFI                         │
 │ (zkd CLI, Rust SDK, JSON configs, profiles, C ABI + bindings) │
-│   • Bindings: Node/TS, Python, Go, .NET, Swift/iOS, WASI      │
+│   • Bindings: Node/TS, Python, Flutter/Dart, WASI             │
+│     (Go/.NET/Java/Kotlin/Swift via DIY cookbook)              │
 ├──────────────────────────────────────────────────────────────┤
 │                    Coordinator Layer                          │
 │   • Loads AIR-IR + Bundles                                   │

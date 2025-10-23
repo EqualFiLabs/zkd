@@ -33,7 +33,7 @@ ZKD is a deterministic, backend-agnostic STARK proving engine that ships with a 
 
 * **Deterministic by contract**: identical inputs with the same backend and profile produce identical proof digests. Determinism is validated at the proof layer with manifest hashing and golden vectors.  
 * **Backend-agnostic**: a portable AIR-IR and adapter layer allow multiple engines to coexist without changing your AIR. Swap backends while preserving public output digests. 
-* **Developer-friendly**: clean CLI, stable C ABI, and maintained bindings for Node, Python, Go, .NET, Swift, and WASI. 
+* **Developer-friendly**: clean CLI, stable C ABI, and maintained bindings for Node, Python, Flutter/Dart, and WASI (Go/.NET/Java/Kotlin/Swift follow the bindings cookbook until official releases return). 
 * **Privacy gadgets**: Pedersen commitments, range checks, and Merkle tools shipped as reusable bundles. 
 * **Ready profiles**: drop-in AIRs for auth, allowlists, balance checks, age gates, and more. 
 
@@ -165,14 +165,14 @@ Exported symbols:
 * plus helpers like `zkp_version`, `zkp_set_callback`, `zkp_cancel` for richer integrations.
   Error returns are UTF-8 JSON blobs that callers must free via `zkp_free`. The context is thread safe and supports concurrent prove and verify.   
 
-Bindings ship for Node, Python, Go, .NET, Swift, and WASI. Each maps the C ABI into idiomatic APIs and types. 
+Official bindings ship for Node, Python, Flutter/Dart, and WASI. Go, .NET, Java/Kotlin, and Swift rely on the DIY bindings cookbook until official packages return. Each wrapper maps the C ABI into idiomatic APIs and types. 
 
 ---
 
 ## WASM and Mobile
 
 * **WASI target** exports the same C ABI for serverless and browsers. A small JS loader exposes `prove` and `verify` that mirror the Node API. 
-* **Flutter and Swift bindings** wrap the shared library for Android and iOS and include finalizers that call `zkp_free`. 
+* **Flutter plugin** wraps the shared library for Android and iOS and includes finalizers that call `zkp_free`. Cookbook guidance covers minimal Swift overlays until the Ecosystem phase adds an official package. 
 
 ---
 

@@ -22,7 +22,7 @@ Version 0.3 introduces the **Backend Adapter Layer**, YAML-authored AIR definiti
 | **Verifier Engine**  | Reconstructs transcript and verifies proof deterministically.              |
 | **Bundle Author**    | Creates reusable sub-AIR gadgets with typed ports and degree bounds.       |
 | **Backend Adapter**  | Translates AIR-IR into backend-specific API (Winterfell, Plonky2/3, etc.). |
-| **Binding Maintainer** | Keeps language bindings in sync with the C ABI; ships Node/TS, Python, Go, .NET, Swift, WASI packages. |
+| **Binding Maintainer** | Keeps language bindings in sync with the C ABI; ships Node/TS, Python, Flutter/Dart, WASI packages and curates the DIY cookbook for Go, .NET, Java/Kotlin, and Swift. |
 | **Profile Registry** | Maintains security parameter presets (dev, balanced, secure).              |
 
 ---
@@ -182,7 +182,7 @@ Output: `verified: bool`.
 | --------------- | ------------- | --------------------------------------------------------------------------------- |
 | CLI             | User ↔ Engine | `zkd prove -p program.air -i inputs.json --backend winterfell --profile balanced` |
 | Rust SDK        | Library       | `prove(program, trace, pub_in, profile, backend)` / `verify(...)`                 |
-| **C ABI & FFI** | Language ↔ Engine | `zkp_init()`, `zkp_prove(cfg)`, `zkp_verify(...)` etc.; wrapped by Node/TS, Python, Go, .NET, Swift, WASI bindings |
+| **C ABI & FFI** | Language ↔ Engine | `zkp_init()`, `zkp_prove(cfg)`, `zkp_verify(...)` etc.; wrapped by Node/TS, Python, Flutter/Dart, WASI bindings (Go/.NET/Java/Kotlin/Swift via DIY cookbook) |
 | Backend Trait   | Internal      | `ProverBackend` / `VerifierBackend`                                               |
 | Config Schema   | JSON/TOML     | validated params (field, hash, profile, backend)                                  |
 | Bundle Registry | File/Dir      | `*.bundle` describing ports + generator                                           |

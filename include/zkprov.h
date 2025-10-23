@@ -55,6 +55,15 @@ int32_t zkp_list_backends(char **out_json);
 int32_t zkp_list_profiles(char **out_json);
 
 /**
+ * Retrieve the semantic version of the prover runtime.
+ *
+ * On success, *out_json receives a heap-allocated, NUL-terminated UTF-8 JSON
+ * string (envelope with `version` and optional metadata). The caller must free
+ * any non-NULL value via zkp_free. On failure, *out_json is set to NULL.
+ */
+int32_t zkp_version(char **out_json);
+
+/**
  * Generate a proof and metadata for the supplied AIR program.
  *
  * Parameters and ownership rules:
@@ -119,4 +128,3 @@ void zkp_free(void *ptr);
 #ifdef __cplusplus
 }
 #endif
-

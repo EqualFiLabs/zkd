@@ -224,6 +224,26 @@ fn serialize_json<T: Serialize>(value: &T) -> FfiResult<String> {
     serde_json::to_string(value).map_err(|_| ErrorCode::Internal)
 }
 
+fn version_string() -> &'static str {
+    static VERSION: OnceLock<String> = OnceLock::new();
+    VERSION.get_or_init(|| env!("CARGO_PKG_VERSION").to_owned())
+}
+
+fn git_commit_hash() -> Option<&'static str> {
+    option_env!("ZKD_GIT_SHA")
+        .or(option_env!("VERGEN_GIT_SHA"))
+        .or(option_env!("GIT_COMMIT_HASH"))
+}
+
+fn with_version(envelope: Envelope) -> Envelope {
+    let envelope = with_field(envelope, "version", version_string());
+    if let Some(commit) = git_commit_hash() {
+        with_field(envelope, "commit", commit)
+    } else {
+        envelope
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn zkp_init() -> i32 {
     to_i32(init_runtime())
@@ -263,6 +283,26 @@ pub unsafe extern "C" fn zkp_list_profiles(out_json: *mut *mut c_char) -> i32 {
         init_runtime()?;
         let profiles = load_all_profiles().map_err(|_| ErrorCode::Internal)?;
         let json = serialize_json(&profiles)?;
+        let ptr = alloc_cstring(&json)?;
+        unsafe {
+            *out_json = ptr;
+        }
+        Ok(())
+    })())
+}
+
+/// # Safety
+///
+/// - `out_json` must point to valid, writable memory where a pointer to a newly
+///   allocated, null-terminated string can be stored.
+/// - The caller is responsible for freeing the returned string with
+///   [`zkp_free_string`](crate::zkp_free_string).
+#[no_mangle]
+pub unsafe extern "C" fn zkp_version(out_json: *mut *mut c_char) -> i32 {
+    to_i32((|| {
+        ensure_output_ptr(out_json)?;
+        let envelope = with_version(ok());
+        let json = envelope.into_string();
         let ptr = alloc_cstring(&json)?;
         unsafe {
             *out_json = ptr;
@@ -321,11 +361,11 @@ pub unsafe extern "C" fn zkp_prove(
         let digest = digest_D(&header, body);
         let digest_hex = hex_encode(&digest);
 
-        let meta_envelope = with_field(
+        let meta_envelope = with_version(with_field(
             with_field(ok(), "digest", digest_hex),
             "proof_len",
             proof_len_u64,
-        );
+        ));
         let meta_json = meta_envelope.into_string();
         let meta_ptr = alloc_cstring(&meta_json)?;
 
@@ -405,7 +445,11 @@ pub unsafe extern "C" fn zkp_verify(
             Err(err) => return Err(map_verify_error(&err)),
         }
 
-        let meta_envelope = with_field(with_field(ok(), "verified", true), "digest", digest_hex);
+        let meta_envelope = with_version(with_field(
+            with_field(ok(), "verified", true),
+            "digest",
+            digest_hex,
+        ));
         let meta_json = meta_envelope.into_string();
         let meta_ptr = alloc_cstring(&meta_json)?;
         unsafe {
@@ -490,6 +534,20 @@ mod tests {
     }
 
     #[test]
+    fn version_function_returns_envelope() {
+        let mut version_ptr: *mut c_char = ptr::null_mut();
+        assert_eq!(unsafe { zkp_version(&mut version_ptr) }, ZKP_OK);
+        assert!(!version_ptr.is_null());
+        let version_json = unsafe { CStr::from_ptr(version_ptr) }
+            .to_str()
+            .expect("version JSON must be UTF-8");
+        let value: Value = serde_json::from_str(version_json).unwrap();
+        assert!(value["ok"].as_bool().unwrap());
+        assert_eq!(value["version"], Value::from(env!("CARGO_PKG_VERSION")));
+        zkp_free(version_ptr.cast());
+    }
+
+    #[test]
     fn prove_and_verify_roundtrip_via_ffi() {
         assert_eq!(zkp_init(), ZKP_OK);
 
@@ -557,6 +615,10 @@ mod tests {
         assert!(prove_meta_json["ok"].as_bool().unwrap());
         assert!(prove_meta_json.get("digest").is_some());
         assert_eq!(prove_meta_json["proof_len"], Value::from(proof_len));
+        assert_eq!(
+            prove_meta_json["version"],
+            Value::from(env!("CARGO_PKG_VERSION"))
+        );
 
         let mut verify_meta_ptr: *mut c_char = ptr::null_mut();
         let status = unsafe {
@@ -582,9 +644,21 @@ mod tests {
         assert!(verify_meta_json["ok"].as_bool().unwrap());
         assert!(verify_meta_json["verified"].as_bool().unwrap());
         assert_eq!(verify_meta_json["digest"], prove_meta_json["digest"]);
+        assert_eq!(
+            verify_meta_json["version"],
+            Value::from(env!("CARGO_PKG_VERSION"))
+        );
 
         zkp_free(prove_meta_ptr.cast());
         zkp_free(verify_meta_ptr.cast());
         zkp_free(proof_ptr.cast());
+    }
+
+    #[test]
+    fn zkp_free_is_idempotent() {
+        let ptr = zkp_alloc(64);
+        assert!(!ptr.is_null());
+        zkp_free(ptr);
+        zkp_free(ptr);
     }
 }
