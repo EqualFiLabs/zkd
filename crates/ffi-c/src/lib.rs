@@ -231,8 +231,8 @@ fn version_string() -> &'static str {
 
 fn git_commit_hash() -> Option<&'static str> {
     option_env!("ZKD_GIT_SHA")
-        .or_else(|| option_env!("VERGEN_GIT_SHA"))
-        .or_else(|| option_env!("GIT_COMMIT_HASH"))
+        .or(option_env!("VERGEN_GIT_SHA"))
+        .or(option_env!("GIT_COMMIT_HASH"))
 }
 
 fn with_version(envelope: Envelope) -> Envelope {
@@ -291,6 +291,12 @@ pub unsafe extern "C" fn zkp_list_profiles(out_json: *mut *mut c_char) -> i32 {
     })())
 }
 
+/// # Safety
+///
+/// - `out_json` must point to valid, writable memory where a pointer to a newly
+///   allocated, null-terminated string can be stored.
+/// - The caller is responsible for freeing the returned string with
+///   [`zkp_free_string`](crate::zkp_free_string).
 #[no_mangle]
 pub unsafe extern "C" fn zkp_version(out_json: *mut *mut c_char) -> i32 {
     to_i32((|| {
