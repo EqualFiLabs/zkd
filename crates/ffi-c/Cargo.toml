@@ -6,7 +6,7 @@ license = "MIT"
 
 [lib]
 name = "zkprov"
-crate-type = ["staticlib","cdylib", "rlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 anyhow = "1"

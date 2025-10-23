@@ -6,3 +6,14 @@
 Cargo.lock
 .idea
 .vscode
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+build/
+dist/
+bindings/python/zkprov/*.so
+bindings/python/zkprov/*.dylib
+bindings/python/zkprov/*.dll

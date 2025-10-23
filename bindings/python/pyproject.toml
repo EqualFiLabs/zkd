@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zkprov"
+version = "0.1.0"
+description = "ZKProv Python bindings via ctypes"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name="ZKProv Team"}]
+requires-python = ">=3.8"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://example.invalid/zkprov"
+

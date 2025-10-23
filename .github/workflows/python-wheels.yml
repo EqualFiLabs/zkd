@@ -1,0 +1,72 @@
+name: Python Wheels
+
+on:
+  push:
+    paths:
+      - 'bindings/python/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/python-wheels.yml'
+  pull_request:
+    paths:
+      - 'bindings/python/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/python-wheels.yml'
+
+jobs:
+  build-wheels:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cibw-before-all-linux: >
+              curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable &&
+              . "$HOME/.cargo/env" &&
+              rustup target add x86_64-unknown-linux-gnu
+            cibw-before-build-linux: >
+              . "$HOME/.cargo/env" &&
+              cargo build -p zkprov-ffi-c --release --target x86_64-unknown-linux-gnu &&
+              mkdir -p {package}/zkprov &&
+              cp /project/target/x86_64-unknown-linux-gnu/release/libzkprov.so {package}/zkprov/
+          - os: macos-latest
+            cibw-before-build-macos: >
+              cargo build -p zkprov-ffi-c --release &&
+              mkdir -p {package}/zkprov &&
+              cp target/release/libzkprov.dylib {package}/zkprov/
+          - os: windows-latest
+            cibw-before-build-windows: >
+              cargo build -p zkprov-ffi-c --release --target x86_64-pc-windows-msvc &&
+              if not exist "{package}\zkprov" mkdir "{package}\zkprov" &&
+              copy /Y "target\x86_64-pc-windows-msvc\release\zkprov.dll" "{package}\zkprov\zkprov.dll"
+    runs-on: ${{ matrix.os }}
+    env:
+      CIBW_BUILD: "cp38-* cp39-* cp310-* cp311-* cp312-*"
+      CIBW_SKIP: "*-musllinux_*"
+      CIBW_BEFORE_ALL_LINUX: ${{ matrix.cibw-before-all-linux || '' }}
+      CIBW_BEFORE_BUILD_LINUX: ${{ matrix.cibw-before-build-linux || '' }}
+      CIBW_BEFORE_BUILD_MACOS: ${{ matrix.cibw-before-build-macos || '' }}
+      CIBW_BEFORE_BUILD_WINDOWS: ${{ matrix.cibw-before-build-windows || '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Upgrade pip and install pipx
+        run: python -m pip install --upgrade pip pipx
+
+      - name: Build wheels with cibuildwheel
+        run: python -m pipx run cibuildwheel bindings/python --output-dir bindings/python/wheelhouse
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: bindings/python/wheelhouse
