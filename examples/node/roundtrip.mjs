@@ -1,4 +1,10 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import zk from '@zkprov/node';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const airPath = path.resolve(__dirname, '..', 'air', 'toy.air');
 
 const cfg = {
   backendId: 'native@0.0',
@@ -6,12 +12,13 @@ const cfg = {
   hashId: 'blake3',
   friArity: 2,
   profileId: 'balanced',
-  airPath: 'examples/air/toy.air',
+  airPath,
   publicInputsJson: JSON.stringify({ demo: true, n: 7 }),
 };
 
 const backs = await zk.listBackends();
-console.log('backends:', Object.keys(backs));
+const backendIds = backs.map((backend) => backend?.id).filter((id) => Boolean(id));
+console.log('backends:', backendIds);
 
 const { proof, meta } = await zk.prove(cfg);
 console.log('D=', meta.digest, 'len=', meta.proof_len);
