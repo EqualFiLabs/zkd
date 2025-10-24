@@ -1,0 +1,12 @@
+{
+  "name": "@zkprov/example-node",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "roundtrip": "node roundtrip.mjs",
+    "test": "node roundtrip.mjs"
+  },
+  "dependencies": {
+    "@zkprov/node": "file:../../bindings/node"
+  }
+}

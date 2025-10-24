@@ -1,0 +1,28 @@
+PODS:
+  - Flutter (1.0.0)
+  - integration_test (0.0.1):
+    - Flutter
+  - zkprov_flutter (0.0.1):
+    - Flutter
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - integration_test (from `.symlinks/plugins/integration_test/ios`)
+  - zkprov_flutter (from `.symlinks/plugins/zkprov_flutter/ios`)
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  integration_test:
+    :path: ".symlinks/plugins/integration_test/ios"
+  zkprov_flutter:
+    :path: ".symlinks/plugins/zkprov_flutter/ios"
+
+SPEC CHECKSUMS:
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
+  zkprov_flutter: 8348ec0a107b44b181253d9eb5df79d5f00cb57d
+
+PODFILE CHECKSUM: 54a2699a500fdebbbb77b9f552a3ff04ce7ca891
+
+COCOAPODS: 1.16.2

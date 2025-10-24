@@ -12,7 +12,6 @@
 
 ### Task 0.1 — Repository Scaffold & Base Tooling (DONE)
 
-
 * **Objective:** initialize reproducible repo with Rust workspace, core lib, CLI, docs.
 * **Files:** `/Cargo.toml`, `/src/main.rs`, `/src/lib.rs`, `/crates/corelib/`, `/docs/`, `/scripts/`, `/.gitignore`, `/.editorconfig`, `/.gitattributes`, `/.github/workflows/ci.yml`, `/LICENSE`, `/README.md`
 * **Steps:** init workspace; add deps (`serde`, `serde_json`, `thiserror`, `clap`, `rayon`, `blake3`); editorconfig; license; README; dummy CLI.
@@ -68,35 +67,40 @@
 * **DoD:** Solidity stub verifies `D` from a native proof; Keccak vectors pass; ABI round-trip equality.
 
 ### Task 0.9.0 — C ABI Bindings (Desktop + Mobile) (DONE)
-- **Objective:** export a stable C API for embedding (desktop + mobile), exposing proof and verification entry points.
-- **Files:** `/crates/ffi-c/src/lib.rs`, `/include/zkprov.h`, `/tests/ffi_roundtrip.c`
-- **Steps:**
+
+* **Objective:** export a stable C API for embedding (desktop + mobile), exposing proof and verification entry points.
+* **Files:** `/crates/ffi-c/src/lib.rs`, `/include/zkprov.h`, `/tests/ffi_roundtrip.c`
+* **Steps:**
   1. Expose six extern "C" functions: `zkp_init`, `zkp_prove`, `zkp_verify`, `zkp_list_backends`, `zkp_list_profiles`, and `zkp_free`.
   2. Map Rust errors to numeric return codes and structured JSON strings.
   3. Provide allocation helpers (`zkp_alloc`, `zkp_free`) for safe interop.
   4. Compile and link against Rust corelib; produce shared library `libzkprov.so` (Linux/Android) and `libzkprov.dylib` (macOS).
   5. Write a small C harness verifying a toy proof via FFI.
-- **DoD:** header compiles with `clang -Wall`; C example verifies proof and prints deterministic digest D; FFI library builds on CI.
+* **DoD:** header compiles with `clang -Wall`; C example verifies proof and prints deterministic digest D; FFI library builds on CI.
 
 ### Task 0.9.1 — Node/TypeScript N-API Addon (OOB support) (DONE)
-- **Objective:** first‑class Node/TypeScript binding with prebuilt binaries.
-- **Files:** `/bindings/node/{binding.gyp, src/addon.cc, index.ts, index.d.ts}`
-- **Steps:** implement asynchronous `prove/verify` methods using N‑API; wrap configuration and output JSON into idiomatic objects; provide type definitions; implement a loader that resolves the correct `.node` binary per platform; integrate `prebuildify` to distribute precompiled artifacts.
-- **DoD:** installing the package with `npm` and invoking `require('@zkprov/node').prove(...)` succeeds on Linux, macOS and Windows; CI jobs publish prebuilt binaries for each supported Node ABI.
+
+* **Objective:** first‑class Node/TypeScript binding with prebuilt binaries.
+* **Files:** `/bindings/node/{binding.gyp, src/addon.cc, index.ts, index.d.ts}`
+* **Steps:** implement asynchronous `prove/verify` methods using N‑API; wrap configuration and output JSON into idiomatic objects; provide type definitions; implement a loader that resolves the correct `.node` binary per platform; integrate `prebuildify` to distribute precompiled artifacts.
+* **DoD:** installing the package with `npm` and invoking `require('@zkprov/node').prove(...)` succeeds on Linux, macOS and Windows; CI jobs publish prebuilt binaries for each supported Node ABI.
 
 ### Task 0.9.2 — Dart FFI Plugin (Flutter) (DONE)
-- **Objective:** Flutter integration via Dart FFI (renumbered from the original Task 0.9.1).
-- **Files:** `/bindings/flutter_plugin/lib/zkprov_ffi.dart`, `/android/src/main/jniLibs/arm64-v8a/libzkprov.so`, `/ios/ZkProv.xcframework/`
-- **Steps:** implement Dart bindings to the C ABI using `dart:ffi`; provide per‑OS dynamic library loading logic; write helper functions for converting `Utf8` pointers; include finalizers that call `zkp_free` on returned pointers; add a small Flutter demo UI; configure the build scripts to package the correct shared libraries for Android and iOS.
-- **DoD:** the Flutter demo app can generate and verify a toy proof locally on both Android and iOS; CI builds of the plugin succeed.
+
+* **Objective:** Flutter integration via Dart FFI (renumbered from the original Task 0.9.1).
+* **Files:** `/bindings/flutter_plugin/lib/zkprov_ffi.dart`, `/android/src/main/jniLibs/arm64-v8a/libzkprov.so`, `/ios/ZkProv.xcframework/`
+* **Steps:** implement Dart bindings to the C ABI using `dart:ffi`; provide per‑OS dynamic library loading logic; write helper functions for converting `Utf8` pointers; include finalizers that call `zkp_free` on returned pointers; add a small Flutter demo UI; configure the build scripts to package the correct shared libraries for Android and iOS.
+* **DoD:** the Flutter demo app can generate and verify a toy proof locally on both Android and iOS; CI builds of the plugin succeed.
 
 ### Task 0.9.3 — Python Binding (DONE)
+
 * **Objective:** publish a Python package using `ctypes` or `cffi`.
 * **Files:** `/bindings/python/{zkprov/__init__.py, setup.cfg, pyproject.toml}`
 * **Steps:** declare the C function signatures for all exported symbols; ensure every function that returns a heap‑allocated pointer calls `zkp_free` when no longer needed (via context managers or helper functions); build manylinux, macOS and Windows wheels in CI; add a minimal example script that proves and verifies a toy program.
 * **DoD:** `pip install zkprov` succeeds and running `python -m zkprov.hello` produces a proof and verifies it; CI produces wheels for all target platforms.
 
 ### Task 0.9.4 — Go (cgo) Binding (DEFERRED)
+
 * **Objective:** provide an idiomatic Go wrapper over the C ABI.
 * **Files:** `/bindings/go/{zkprov.go, go.mod}`
 * **Steps:** use cgo to import the C functions; map return codes and JSON strings to Go errors and structs; ensure all heap‑allocated pointers are freed via finalizers or explicit `Close()` methods; expose a `Prove(ctx, Config) (Proof, error)` function and a corresponding `Verify()` helper; include a small example program.
@@ -104,6 +108,7 @@
 *Status note:* deferred to the Ecosystem phase; adopters should lean on `docs/bindings-cookbook.md` for interim guidance and contribute conformance examples rather than blocking releases.
 
 ### Task 0.9.5 — .NET (C# P/Invoke) (DEFERRED)
+
 * **Objective:** ship a NuGet package with P/Invoke bindings.
 * **Files:** `/bindings/dotnet/{ZkProv.csproj, ZkProv.cs}`
 * **Steps:** declare `DllImport` signatures for each exported C function using the Cdecl calling convention; wrap returned pointers in a `SafeHandle` subclass to ensure `zkp_free` is called; package platform‑specific native binaries under `runtimes/*/native/`; publish a NuGet package with proper RID assets; write a simple console example.
@@ -111,6 +116,7 @@
 *Status note:* deferred to the Ecosystem phase; prescribe cookbook snippets and accept community PRs without gating CI.
 
 ### Task 0.9.6 — Java/Kotlin (JNI) + Android AAR (DEFERRED)
+
 * **Objective:** cover JVM and Android ecosystems via JNI.
 * **Files:** `/bindings/java/{src/main/java/...}`, `/bindings/android/aar/`
 * **Steps:** implement a JNI shim that calls into the C ABI and converts UTF‑8 strings to Java `String` objects; load the native library via `System.loadLibrary("zkprov")`; build an Android Archive (AAR) bundling the arm64‑v8a shared library; provide ProGuard/R8 keep rules; include a small Java/Kotlin example for desktop and an Android demo app.
@@ -118,37 +124,43 @@
 *Status note:* deferred to the Ecosystem phase; publish cookbook build flags and troubleshooting tips instead of CI jobs.
 
 ### Task 0.9.7 — Swift/iOS (SPM) (DEFERRED)
+
 * **Objective:** create a Swift package over the iOS/macOS XCFramework.
 * **Files:** `/bindings/swift/Package.swift`, Swift wrapper files
 * **Steps:** define a module map exposing the C functions; wrap the C API in Swift functions returning `Result<T, Error>`; integrate the XCFramework into the Swift Package Manager manifest; add notes on code signing and entitlements; include a minimal Swift example app.
 * **DoD:** the Swift package builds on macOS and iOS targets and a small example can prove and verify a toy program; CI ensures successful builds on both platforms.
 *Status note:* deferred to the Ecosystem phase; cookbook samples cover minimal wrappers and memory ownership expectations.
 
-### Task 0.9.7a — DIY Bindings Cookbook (ACTIVE)
+### Task 0.9.7a — DIY Bindings Cookbook (DONE)
+
 * **Objective:** centralize guidance for deferred language ecosystems building on the C ABI.
 * **Files:** `/docs/bindings-cookbook.md`
 * **Steps:** document compilation flags, symbol loading, memory ownership, and error handling for Go, .NET, Java/Kotlin, and Swift; include sample snippets mirroring the toy proof flow; reference ABI stability tests and conformance checklist.
 * **DoD:** cookbook sections for all deferred languages published with runnable snippets; docs cross-link from `ROADMAP.md`, `INTERFACES.md`, and `TEST-PLAN.md`; community contributions reference the checklist instead of blocking CI.
 
-### Task 0.9.8 — WASI/WASM (DONE) 
+### Task 0.9.8 — WASI/WASM (DONE)
+
 * **Objective:** provide a WebAssembly target for serverless and browser environments.
 * **Files:** `/bindings/wasm/{zkprov_wasi.wasm, loader.js}`
 * **Steps:** compile the core library to the `wasm32-wasi` target, exporting the same C ABI functions; write a small JavaScript glue layer that loads the WASM module and exposes `prove` and `verify` functions mirroring the Node API; ensure memory management via an exported `zkp_free` function; document how to import the WASM module in both Node and browser contexts.
 * **DoD:** a Node or browser environment can load the WASM bundle and perform proof generation and verification via the JavaScript API; CI builds the WASM artifact and runs a smoke test.
 
-### Task 0.9.9 — Examples & Troubleshooting
+### Task 0.9.9 — Examples & Troubleshooting (DONE)
+
 * **Objective:** create runnable examples and a troubleshooting guide for all FFI bindings.
 * **Files:** `/examples/*`, `/docs/ffi-troubleshooting.md`
 * **Steps:** provide minimal round‑trip demos (≈20 lines) for each official Phase-0 binding (C, Node, Python, Flutter, WASI); collect common integration issues (missing symbols, architecture mismatch, notarization or code‑signing errors, loader path problems) and document their resolutions; link to cookbook appendices for deferred languages.
 * **DoD:** CI executes each official example after building the corresponding binding; the troubleshooting guide includes a table of known issues and fixes plus references into the cookbook for DIY targets.
 
 ### Task 0.9.10 — CI Matrix & Artifact Publishing
+
 * **Objective:** automate cross‑platform builds, tests and publication for all bindings.
 * **Files:** `/.github/workflows/ffi.yml`
 * **Steps:** build core libraries for all target architectures; run language‑specific smoke tests using the examples from Task 0.9.9; upload prebuilt binaries and publish packages to the appropriate ecosystems (npm, PyPI, pub.dev, wasm bundle); ensure failures in official bindings break CI while cookbook targets report status asynchronously.
 * **DoD:** the GitHub Actions matrix shows green across all official bindings; artifacts and packages are attached to releases and/or published to registries, with cookbook status tracked via documentation updates.
 
 ### Task 0.9.11 — AIR-IR Parser & Public I/O (commitment aware)
+
 * **Objective:** parse `.air` including `Pedersen(curve)`, `PoseidonCommit`, and `KeccakCommit` bindings (renumbered from the original Task 0.9.2).
 * **Files:** `/crates/corelib/src/air/{parser.rs,types.rs}`, `/tests/air_ir_{parser,degree}.rs`
 * **Steps:** update the grammar to support the new commitment bindings; implement type and binding checks; ensure that degree accounting remains unchanged.
