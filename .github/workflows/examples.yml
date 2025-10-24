@@ -1,0 +1,111 @@
+name: Examples
+
+on:
+  push:
+    paths:
+      - '.github/workflows/examples.yml'
+      - 'scripts/run_examples.sh'
+      - 'examples/**'
+      - 'bindings/**'
+      - 'crates/**'
+      - 'include/**'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+  pull_request:
+    paths:
+      - '.github/workflows/examples.yml'
+      - 'scripts/run_examples.sh'
+      - 'examples/**'
+      - 'bindings/**'
+      - 'crates/**'
+      - 'include/**'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+  workflow_dispatch:
+
+jobs:
+  examples-matrix:
+    name: Examples (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            examples: "c node python wasm"
+          - os: macos-14
+            examples: "c node python wasm"
+          - os: windows-latest
+            examples: "c node python wasm"
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Add wasm target
+        run: rustup target add wasm32-wasip1
+        shell: bash
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Linux prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang python3-venv
+        shell: bash
+
+      - name: Run examples
+        run: ./scripts/run_examples.sh ${{ matrix.examples }}
+        shell: bash
+
+  flutter:
+    name: Flutter Android APK
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build native library
+        run: cargo build -p zkprov-ffi-c --release
+        shell: bash
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter version
+        run: flutter --version
+        shell: bash
+
+      - name: Precache Android artifacts
+        run: flutter --suppress-analytics precache --android
+        shell: bash
+
+      - name: Flutter pub get
+        working-directory: examples/flutter_app
+        run: flutter --suppress-analytics pub get
+        shell: bash
+
+      - name: Flutter build apk
+        working-directory: examples/flutter_app
+        env:
+          ZKPROV_LIBRARY_PATH: ${{ github.workspace }}/target/release/libzkprov.so
+        run: flutter --suppress-analytics build apk
+        shell: bash

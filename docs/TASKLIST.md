@@ -131,7 +131,7 @@
 * **DoD:** the Swift package builds on macOS and iOS targets and a small example can prove and verify a toy program; CI ensures successful builds on both platforms.
 *Status note:* deferred to the Ecosystem phase; cookbook samples cover minimal wrappers and memory ownership expectations.
 
-### Task 0.9.7a — DIY Bindings Cookbook (ACTIVE)
+### Task 0.9.7a — DIY Bindings Cookbook (DONE)
 
 * **Objective:** centralize guidance for deferred language ecosystems building on the C ABI.
 * **Files:** `/docs/bindings-cookbook.md`
@@ -145,7 +145,7 @@
 * **Steps:** compile the core library to the `wasm32-wasi` target, exporting the same C ABI functions; write a small JavaScript glue layer that loads the WASM module and exposes `prove` and `verify` functions mirroring the Node API; ensure memory management via an exported `zkp_free` function; document how to import the WASM module in both Node and browser contexts.
 * **DoD:** a Node or browser environment can load the WASM bundle and perform proof generation and verification via the JavaScript API; CI builds the WASM artifact and runs a smoke test.
 
-### Task 0.9.9 — Examples & Troubleshooting
+### Task 0.9.9 — Examples & Troubleshooting (DONE)
 
 * **Objective:** create runnable examples and a troubleshooting guide for all FFI bindings.
 * **Files:** `/examples/*`, `/docs/ffi-troubleshooting.md`

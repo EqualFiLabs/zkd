@@ -1,0 +1,21 @@
+# Minimal AIR for testing parser/shape.
+rows_hint = 65536
+
+[meta]
+name = "toy_merkle"
+field = "Prime254"
+hash = "blake3"
+degree_hint = 4
+
+[columns]
+trace_cols = 4
+const_cols = 1
+periodic_cols = 1
+
+[constraints]
+transition_count = 3
+boundary_count = 2
+
+[commitments]
+pedersen = true
+curve = "placeholder"
