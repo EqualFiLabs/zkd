@@ -21,3 +21,11 @@ alloy-sol-types = "0.7"
 
 [dev-dependencies]
 zkprov-backend-native = { path = "../backends/native" }
+
+[[test]]
+name = "air_ir_parser"
+path = "../../tests/air_ir_parser.rs"
+
+[[test]]
+name = "air_ir_degree"
+path = "../../tests/air_ir_degree.rs"

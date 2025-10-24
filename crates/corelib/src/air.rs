@@ -1,7 +1,12 @@
 //! AIR-IR: minimal, backend-neutral representation + TOML/YAML parser.
 
 pub mod bindings;
+pub mod parser;
 mod parser_yaml;
+pub mod types;
+
+pub use parser::{parse_air_file, parse_air_str};
+pub use types::{AirIr, CommitmentBinding};
 
 use anyhow::{anyhow, Context, Result};
 use regex::Regex;
