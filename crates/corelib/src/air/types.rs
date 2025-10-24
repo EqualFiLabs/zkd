@@ -2,25 +2,44 @@ use serde::{Deserialize, Serialize};
 
 use super::{AirColumns, AirConstraints, AirMeta, AirProgram};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct AirIr {
     pub meta: AirMeta,
     pub columns: AirColumns,
     pub constraints: AirConstraints,
     #[serde(default)]
-    pub commitment_bindings: Vec<CommitmentBinding>,
+    pub degree_hint: Option<u32>,
+    #[serde(default)]
+    pub commitments: Vec<CommitmentBinding>,
+    #[serde(default)]
+    pub public_inputs: Vec<PublicInput>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum CommitmentBinding {
-    Pedersen {
-        #[serde(default)]
-        curve: Option<String>,
-    },
+pub enum CommitmentKind {
+    Pedersen { curve: String },
     PoseidonCommit,
     KeccakCommit,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CommitmentBinding {
+    pub kind: CommitmentKind,
+    #[serde(default)]
+    pub public_inputs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct PublicInput {
+    pub name: String,
+    #[serde(default)]
+    pub r#type: Option<String>,
+    #[serde(default)]
+    pub binding: Option<String>,
 }
 
 impl From<AirProgram> for AirIr {
@@ -33,18 +52,25 @@ impl From<AirProgram> for AirIr {
             ..
         } = program;
 
-        let commitment_bindings = match commitments {
-            Some(c) if c.pedersen => {
-                vec![CommitmentBinding::Pedersen { curve: c.curve }]
-            }
+        let commitments = match commitments {
+            Some(c) if c.pedersen => vec![CommitmentBinding {
+                kind: CommitmentKind::Pedersen {
+                    curve: c.curve.unwrap_or_default(),
+                },
+                public_inputs: Vec::new(),
+            }],
             _ => Vec::new(),
         };
+
+        let degree_hint = meta.degree_hint;
 
         Self {
             meta,
             columns,
             constraints,
-            commitment_bindings,
+            degree_hint,
+            commitments,
+            public_inputs: Vec::new(),
         }
     }
 }
