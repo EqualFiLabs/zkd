@@ -6,6 +6,10 @@
 //! validation.  A typical DSL fragment looks like this:
 //!
 //! ```toml
+//! commitments = [
+//!     { kind = "poseidon_commit", public = ["root"] }
+//! ]
+//!
 //! [meta]
 //! name = "toy_balance"
 //! field = "Prime254"
@@ -25,9 +29,8 @@
 //! name = "root"
 //! type = "bytes"
 //!
-//! commitments = [
-//!     { kind = "poseidon_commit", public = ["root"] }
-//! ]
+//! Note: The `commitments` array is declared at the root level, before any
+//! table headers, so it remains outside the `[[public_inputs]]` entries.
 //! ```
 //!
 //! The example above binds a Poseidon commitment gadget to the `root` public
@@ -42,6 +45,10 @@
 //! use zkprov_corelib::air::types::{CommitmentKind, PublicTy};
 //!
 //! let src = r#"
+//! commitments = [
+//!     { kind = "poseidon_commit", public = ["root"] }
+//! ]
+//!
 //! [meta]
 //! name = "toy_balance"
 //! field = "Prime254"
@@ -60,10 +67,6 @@
 //! [[public_inputs]]
 //! name = "root"
 //! type = "bytes"
-//!
-//! commitments = [
-//!     { kind = "poseidon_commit", public = ["root"] }
-//! ]
 //! "#;
 //!
 //! let ir = parse_air_str(src).unwrap();

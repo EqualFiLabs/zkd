@@ -52,6 +52,10 @@ impl Default for PublicTy {
 /// use zkprov_corelib::air::types::{CommitmentKind, PublicTy};
 ///
 /// let ir = parse_air_str(r#"
+/// commitments = [
+///     { kind = "poseidon_commit", public = ["root"] }
+/// ]
+///
 /// [meta]
 /// name = "toy_balance"
 /// field = "Prime254"
@@ -70,11 +74,10 @@ impl Default for PublicTy {
 /// [[public_inputs]]
 /// name = "root"
 /// type = "bytes"
-///
-/// commitments = [
-///     { kind = "poseidon_commit", public = ["root"] }
-/// ]
 /// "#).unwrap();
+///
+/// // The `commitments` array is declared at the root level, before other table
+/// // headers, so it remains outside the `[[public_inputs]]` entries.
 ///
 /// assert_eq!(ir.meta.name, "toy_balance");
 /// assert_eq!(ir.meta.degree_hint, Some(8));
