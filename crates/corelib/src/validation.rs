@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::zkprov_bundles::{BlindingTracker, PedersenCtx, PrivacyError, RangeCheck};
 use anyhow::{anyhow, ensure, Result};
@@ -89,6 +89,37 @@ impl ValidationReport {
     /// Deserialize a report from a JSON string.
     pub fn from_json(data: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(data)
+    }
+
+    pub fn write_pretty<P: AsRef<std::path::Path>>(
+        &self,
+        dir: P,
+    ) -> std::io::Result<std::path::PathBuf> {
+        std::fs::create_dir_all(&dir)?;
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| Duration::from_secs(0))
+            .as_secs();
+        let fname = format!(
+            "validation_{}_{}_{}_{}.json",
+            Self::sanitize_component(&self.meta.backend_id),
+            Self::sanitize_component(&self.meta.profile_id),
+            Self::sanitize_component(&self.meta.hash_id),
+            ts
+        );
+        let path = dir.as_ref().join(fname);
+        std::fs::write(&path, serde_json::to_string_pretty(self).unwrap())?;
+        Ok(path)
+    }
+
+    fn sanitize_component(value: &str) -> String {
+        value
+            .chars()
+            .map(|c| match c {
+                'A'..='Z' | 'a'..='z' | '0'..='9' | '.' | '_' | '-' => c,
+                _ => '_',
+            })
+            .collect()
     }
 }
 
@@ -429,6 +460,9 @@ mod tests {
     use super::*;
     use crate::air::bindings::{Bindings, CommitmentsPolicy};
     use crate::zkprov_bundles::PrivacyError;
+    use serde_json::Value;
+    use std::fs;
+    use tempfile::tempdir;
 
     fn bindings_with_pedersen() -> Bindings {
         Bindings {
@@ -574,6 +608,39 @@ mod tests {
         digests.insert("native".to_string(), "ff".to_string());
         digests.insert("winterfell".to_string(), "ff".to_string());
         assert!(assert_digest_parity(&digests).is_ok());
+    }
+
+    #[test]
+    fn write_pretty_persists_report() {
+        let report = ValidationReport {
+            ok: true,
+            commit_passed: true,
+            errors: Vec::new(),
+            warnings: Vec::new(),
+            meta: ReportMeta {
+                backend_id: "backend with spaces".into(),
+                profile_id: "profile/@#".into(),
+                hash_id: "hash$%^".into(),
+                curve: Some("curve25519".into()),
+                time_ms: 42,
+            },
+        };
+
+        let temp = tempdir().unwrap();
+        let path = report.write_pretty(temp.path()).unwrap();
+        assert!(path.exists());
+
+        let contents = fs::read_to_string(&path).unwrap();
+        let parsed: Value = serde_json::from_str(&contents).unwrap();
+        let expected = serde_json::to_value(&report).unwrap();
+        assert_eq!(parsed, expected);
+
+        let filename = path.file_name().unwrap().to_string_lossy();
+        assert!(filename.starts_with("validation_"));
+        assert!(filename.ends_with(".json"));
+        assert!(filename
+            .chars()
+            .all(|c| matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '.' | '_' | '-')));
     }
 
     #[test]

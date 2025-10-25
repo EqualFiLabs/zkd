@@ -21,6 +21,7 @@ alloy-sol-types = "1.4.1"
 
 [dev-dependencies]
 zkprov-backend-native = { path = "../backends/native" }
+tempfile = "3.10.1"
 
 [[test]]
 name = "air_ir_parser"
