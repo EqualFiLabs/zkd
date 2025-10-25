@@ -1,5 +1,8 @@
 use std::collections::BTreeMap;
+use std::marker::PhantomData;
+use std::time::Instant;
 
+use crate::zkprov_bundles::{BlindingTracker, PedersenCtx, PrivacyError, RangeCheck};
 use anyhow::{anyhow, ensure, Result};
 use serde::{Deserialize, Serialize};
 
@@ -159,6 +162,249 @@ impl ValidationWarning {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ValidationConfig {
+    pub pedersen_enabled: bool,
+    pub allowed_curves: Vec<String>,
+    pub keccak_enabled: bool,
+    pub no_r_reuse: bool,
+    requested_curve: Option<String>,
+    requested_hash: Option<String>,
+    pedersen_required: bool,
+}
+
+impl ValidationConfig {
+    fn from_bindings(b: &crate::air::bindings::Bindings) -> Self {
+        let requested_curve = b.commitments.curve.clone();
+        let requested_hash = b.hash_id_for_commitments.clone();
+        let pedersen_required = b.commitments.pedersen;
+
+        let mut allowed_curves = Vec::new();
+        if let Some(curve) = &requested_curve {
+            allowed_curves.push(curve.clone());
+        }
+
+        Self {
+            pedersen_enabled: pedersen_required,
+            allowed_curves,
+            keccak_enabled: true,
+            no_r_reuse: b.commitments.no_r_reuse.unwrap_or(false),
+            requested_curve,
+            requested_hash,
+            pedersen_required,
+        }
+    }
+
+    fn requested_curve(&self) -> Option<&str> {
+        self.requested_curve.as_deref()
+    }
+
+    fn requested_hash(&self) -> Option<&str> {
+        self.requested_hash.as_deref()
+    }
+
+    fn pedersen_required(&self) -> bool {
+        self.pedersen_required
+    }
+
+    fn keccak_requested(&self) -> bool {
+        matches!(
+            self.requested_hash(),
+            Some(hash) if matches_ignore_ascii_case(hash, "keccak")
+                || matches_ignore_ascii_case(hash, "keccak256")
+        )
+    }
+}
+
+fn matches_ignore_ascii_case(value: &str, expected: &str) -> bool {
+    value.eq_ignore_ascii_case(expected)
+}
+
+pub struct Validator<'a> {
+    cfg: ValidationConfig,
+    ped: Option<PedersenCtx>,
+    blinds: BlindingTracker,
+    report: ValidationReport,
+    clock: Instant,
+    _pd: PhantomData<&'a ()>,
+}
+
+impl<'a> Validator<'a> {
+    pub fn new(b: &crate::air::bindings::Bindings) -> Self {
+        let cfg = ValidationConfig::from_bindings(b);
+        let meta = ReportMeta {
+            backend_id: String::new(),
+            profile_id: String::new(),
+            hash_id: cfg.requested_hash().unwrap_or("blake3").to_string(),
+            curve: cfg.requested_curve().map(|c| c.to_string()),
+            time_ms: 0,
+        };
+        let report = ValidationReport::new_ok(meta);
+        let (ped, init_error) = if cfg.pedersen_required() {
+            match PedersenCtx::from_bindings(b) {
+                Ok(ctx) => (Some(ctx), None),
+                Err(err) => (None, Some(err)),
+            }
+        } else {
+            (None, None)
+        };
+
+        let mut validator = Self {
+            cfg,
+            ped,
+            blinds: BlindingTracker::new(),
+            report,
+            clock: Instant::now(),
+            _pd: PhantomData,
+        };
+
+        if let Some(err) = init_error {
+            validator.push_privacy_error(err, serde_json::json!({"operation": "init"}));
+        }
+
+        validator
+    }
+
+    pub fn config_mut(&mut self) -> &mut ValidationConfig {
+        &mut self.cfg
+    }
+
+    pub fn check_commit_point(&mut self, msg: &[u8], r: &[u8]) {
+        if !self.cfg.pedersen_enabled {
+            self.report.push_error(ValidationError::new(
+                ValidationErrorCode::PedersenNotEnabled,
+                "pedersen commitments disabled by configuration",
+                serde_json::json!({"operation": "check_commit_point"}),
+            ));
+            return;
+        }
+
+        if let Some(curve) = self.cfg.requested_curve() {
+            if !self.cfg.allowed_curves.is_empty()
+                && !self
+                    .cfg
+                    .allowed_curves
+                    .iter()
+                    .any(|allowed| matches_ignore_ascii_case(allowed, curve))
+            {
+                self.report.push_error(ValidationError::new(
+                    ValidationErrorCode::CurveNotAllowed,
+                    "curve not allowed by configuration",
+                    serde_json::json!({
+                        "operation": "check_commit_point",
+                        "curve": curve,
+                    }),
+                ));
+                return;
+            }
+        }
+
+        if self.cfg.keccak_requested() && !self.cfg.keccak_enabled {
+            self.report.push_error(ValidationError::new(
+                ValidationErrorCode::KeccakNotEnabled,
+                "keccak commitments disabled by configuration",
+                serde_json::json!({
+                    "operation": "check_commit_point",
+                    "hash": self.cfg.requested_hash(),
+                }),
+            ));
+            return;
+        }
+
+        let Some(ctx) = self.ped.as_ref() else {
+            return;
+        };
+
+        match ctx.commit(&mut self.blinds, msg, r) {
+            Ok(commit) => {
+                let (cx, cy) = commit.as_tuple();
+                if let Err(err) = ctx.open(msg, r, cx, cy) {
+                    self.push_privacy_error(
+                        err,
+                        serde_json::json!({"operation": "check_commit_point"}),
+                    );
+                }
+            }
+            Err(err) => {
+                self.push_privacy_error(
+                    err,
+                    serde_json::json!({"operation": "check_commit_point"}),
+                );
+            }
+        }
+    }
+
+    pub fn check_r_reuse(&mut self, r: &[u8]) {
+        if !self.cfg.pedersen_enabled {
+            self.report.push_error(ValidationError::new(
+                ValidationErrorCode::PedersenNotEnabled,
+                "pedersen commitments disabled by configuration",
+                serde_json::json!({"operation": "check_r_reuse"}),
+            ));
+            return;
+        }
+
+        let Some(ctx) = self.ped.as_ref() else {
+            return;
+        };
+
+        if let Err(err) = self.blinds.note_and_check(r, ctx.no_reuse()) {
+            self.push_privacy_error(err, serde_json::json!({"operation": "check_r_reuse"}));
+        }
+    }
+
+    pub fn check_range_u64(&mut self, v: u64, k: u32) {
+        if let Err(err) = RangeCheck::check_u64(v, k) {
+            self.push_privacy_error(
+                err,
+                serde_json::json!({
+                    "operation": "check_range_u64",
+                    "value": v,
+                    "bits": k,
+                }),
+            );
+        }
+    }
+
+    pub fn finalize(mut self) -> ValidationReport {
+        let elapsed = self.clock.elapsed().as_millis() as u64;
+        self.report.meta.time_ms = elapsed;
+
+        const COMMIT_ERROR_CODES: &[ValidationErrorCode] = &[
+            ValidationErrorCode::InvalidCurvePoint,
+            ValidationErrorCode::BlindingReuse,
+            ValidationErrorCode::RangeCheckOverflow,
+            ValidationErrorCode::CurveNotAllowed,
+            ValidationErrorCode::PedersenNotEnabled,
+            ValidationErrorCode::KeccakNotEnabled,
+        ];
+
+        let commit_passed = !self
+            .report
+            .errors
+            .iter()
+            .any(|err| COMMIT_ERROR_CODES.contains(&err.code));
+        self.report.set_commit_passed(commit_passed);
+        self.report
+    }
+
+    fn push_privacy_error(&mut self, err: PrivacyError, context: serde_json::Value) {
+        let code = Self::map_privacy_error(&err);
+        self.report
+            .push_error(ValidationError::new(code, err.to_string(), context));
+    }
+
+    fn map_privacy_error(err: &PrivacyError) -> ValidationErrorCode {
+        match err {
+            PrivacyError::InvalidCurvePoint => ValidationErrorCode::InvalidCurvePoint,
+            PrivacyError::BlindingReuse => ValidationErrorCode::BlindingReuse,
+            PrivacyError::RangeCheckOverflow => ValidationErrorCode::RangeCheckOverflow,
+            PrivacyError::UnsupportedCurve => ValidationErrorCode::CurveNotAllowed,
+            PrivacyError::Internal(_) => ValidationErrorCode::UnsupportedCurve,
+        }
+    }
+}
+
 /// Utility to assert that all backend digests within a registry entry match exactly.
 pub fn assert_digest_parity(digests: &BTreeMap<String, String>) -> Result<()> {
     if digests.is_empty() {
@@ -181,6 +427,109 @@ pub fn assert_digest_parity(digests: &BTreeMap<String, String>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::air::bindings::{Bindings, CommitmentsPolicy};
+    use crate::zkprov_bundles::PrivacyError;
+
+    fn bindings_with_pedersen() -> Bindings {
+        Bindings {
+            commitments: CommitmentsPolicy {
+                pedersen: true,
+                curve: Some("placeholder".to_string()),
+                no_r_reuse: Some(false),
+            },
+            hash_id_for_commitments: Some("blake3".to_string()),
+        }
+    }
+
+    #[test]
+    fn privacy_error_mapping_matches_codes() {
+        assert_eq!(
+            Validator::map_privacy_error(&PrivacyError::InvalidCurvePoint),
+            ValidationErrorCode::InvalidCurvePoint
+        );
+        assert_eq!(
+            Validator::map_privacy_error(&PrivacyError::BlindingReuse),
+            ValidationErrorCode::BlindingReuse
+        );
+        assert_eq!(
+            Validator::map_privacy_error(&PrivacyError::RangeCheckOverflow),
+            ValidationErrorCode::RangeCheckOverflow
+        );
+        assert_eq!(
+            Validator::map_privacy_error(&PrivacyError::UnsupportedCurve),
+            ValidationErrorCode::CurveNotAllowed
+        );
+        assert_eq!(
+            Validator::map_privacy_error(&PrivacyError::Internal("oops".into())),
+            ValidationErrorCode::UnsupportedCurve
+        );
+    }
+
+    #[test]
+    fn pedersen_disabled_records_error() {
+        let bindings = bindings_with_pedersen();
+        let mut validator = Validator::new(&bindings);
+        validator.config_mut().pedersen_enabled = false;
+        validator.check_commit_point(b"msg", b"r");
+        assert_eq!(validator.report.errors.len(), 1);
+        assert_eq!(
+            validator.report.errors[0].code,
+            ValidationErrorCode::PedersenNotEnabled
+        );
+    }
+
+    #[test]
+    fn blinding_reuse_detected() {
+        let mut bindings = bindings_with_pedersen();
+        bindings.commitments.no_r_reuse = Some(true);
+        let mut validator = Validator::new(&bindings);
+        validator.check_r_reuse(b"r1");
+        validator.check_r_reuse(b"r1");
+        assert!(validator
+            .report
+            .errors
+            .iter()
+            .any(|e| e.code == ValidationErrorCode::BlindingReuse));
+    }
+
+    #[test]
+    fn range_check_overflow_detected() {
+        let bindings = bindings_with_pedersen();
+        let mut validator = Validator::new(&bindings);
+        validator.check_range_u64(16, 4);
+        assert!(validator
+            .report
+            .errors
+            .iter()
+            .any(|e| e.code == ValidationErrorCode::RangeCheckOverflow));
+    }
+
+    #[test]
+    fn keccak_disabled_emits_error() {
+        let mut bindings = bindings_with_pedersen();
+        bindings.hash_id_for_commitments = Some("keccak256".to_string());
+        let mut validator = Validator::new(&bindings);
+        validator.config_mut().keccak_enabled = false;
+        validator.check_commit_point(b"msg", b"r");
+        assert!(validator
+            .report
+            .errors
+            .iter()
+            .any(|e| e.code == ValidationErrorCode::KeccakNotEnabled));
+    }
+
+    #[test]
+    fn curve_not_allowed_emits_error() {
+        let bindings = bindings_with_pedersen();
+        let mut validator = Validator::new(&bindings);
+        validator.config_mut().allowed_curves = vec!["bls12-381".to_string()];
+        validator.check_commit_point(b"msg", b"r");
+        assert!(validator
+            .report
+            .errors
+            .iter()
+            .any(|e| e.code == ValidationErrorCode::CurveNotAllowed));
+    }
 
     #[test]
     fn manifest_hash_verification_passes() {

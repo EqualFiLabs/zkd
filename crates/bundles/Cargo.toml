@@ -12,10 +12,10 @@ zkprov-backend-native = { path = "../backends/native" }
 serde_json = "1.0.127"
 
 [dev-dependencies]
-toml = "0.8"
+toml = "0.9.8"
 serde_yaml = "0.9.34"
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
-alloy-sol-types = "0.7.7"
+alloy-sol-types = "1.4.1"
 
 [[test]]
 name = "privacy_gadgets"
