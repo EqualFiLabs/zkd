@@ -365,6 +365,63 @@ impl<'a> Validator<'a> {
         }
     }
 
+    pub fn check_commit_point_with_pair(
+        &mut self,
+        msg: &[u8],
+        r: &[u8],
+        cx: &[u8; 32],
+        cy: &[u8; 32],
+    ) {
+        if !self.cfg.pedersen_enabled {
+            self.report.push_error(ValidationError::new(
+                ValidationErrorCode::PedersenNotEnabled,
+                "pedersen commitments disabled by configuration",
+                serde_json::json!({"operation": "check_commit_point"}),
+            ));
+            return;
+        }
+
+        if let Some(curve) = self.cfg.requested_curve() {
+            if !self.cfg.allowed_curves.is_empty()
+                && !self
+                    .cfg
+                    .allowed_curves
+                    .iter()
+                    .any(|allowed| matches_ignore_ascii_case(allowed, curve))
+            {
+                self.report.push_error(ValidationError::new(
+                    ValidationErrorCode::CurveNotAllowed,
+                    "curve not allowed by configuration",
+                    serde_json::json!({
+                        "operation": "check_commit_point",
+                        "curve": curve,
+                    }),
+                ));
+                return;
+            }
+        }
+
+        if self.cfg.keccak_requested() && !self.cfg.keccak_enabled {
+            self.report.push_error(ValidationError::new(
+                ValidationErrorCode::KeccakNotEnabled,
+                "keccak commitments disabled by configuration",
+                serde_json::json!({
+                    "operation": "check_commit_point",
+                    "hash": self.cfg.requested_hash(),
+                }),
+            ));
+            return;
+        }
+
+        let Some(ctx) = self.ped.as_ref() else {
+            return;
+        };
+
+        if let Err(err) = ctx.open(msg, r, cx, cy) {
+            self.push_privacy_error(err, serde_json::json!({"operation": "check_commit_point"}));
+        }
+    }
+
     pub fn check_r_reuse(&mut self, r: &[u8]) {
         if !self.cfg.pedersen_enabled {
             self.report.push_error(ValidationError::new(
