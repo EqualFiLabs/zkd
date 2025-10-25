@@ -166,13 +166,6 @@
 * **Steps:** update the grammar to support the new commitment bindings; implement type and binding checks; ensure that degree accounting remains unchanged.
 * **DoD:** `.air` files using commitment bindings parse and validate correctly.
 
-### Task 0.9.12 — AIR-IR Parser & Public I/O (commitment aware)
-
-* **Objective:** parse `.air` incl. `Pedersen(curve)`, `PoseidonCommit`, `KeccakCommit` bindings.
-* **Files:** `/crates/corelib/src/air/{parser.rs,types.rs}`, `/tests/air_ir_{parser,degree}.rs`
-* **Steps:** grammar updates; type/binding checks; degree accounting unchanged.
-* **DoD:** `.air` files with commitment bindings parse and validate.
-
 ### Task 0.10 — Validation & Report System (commitment-aware)
 
 * **Objective:** structured JSON validation with new errors and `commit_passed` flag.

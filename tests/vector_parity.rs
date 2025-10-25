@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use zkprov_corelib::validation::{assert_digest_parity, DeterminismVector, ValidationReport};
+use zkprov_corelib::validation::{assert_digest_parity, ReportMeta, ValidationReport};
 
 #[test]
 fn golden_vector_parity_detects_mismatch() {
@@ -13,17 +13,14 @@ fn golden_vector_parity_detects_mismatch() {
 
 #[test]
 fn determinism_vector_manifest_validation() {
-    let report = ValidationReport {
-        commit_passed: true,
-        vector_passed: true,
-        determinism: DeterminismVector {
-            backend: "native@0.0".to_string(),
-            manifest_hash: "cafebabe".to_string(),
-            compiler_commit: Some("1234567".to_string()),
-            system: Some("linux-x86_64".to_string()),
-            seed: Some("01020304".to_string()),
-        },
+    let meta = ReportMeta {
+        backend_id: "native@0.0".to_string(),
+        profile_id: "profile-a".to_string(),
+        hash_id: "cafebabe".to_string(),
+        curve: Some("bls12-377".to_string()),
+        time_ms: 10,
     };
+    let report = ValidationReport::new_ok(meta);
     report
         .verify_manifest_hash("cafebabe")
         .expect("manifest hash should match");
