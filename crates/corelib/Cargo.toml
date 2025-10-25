@@ -30,3 +30,7 @@ path = "../../tests/air_ir_parser.rs"
 [[test]]
 name = "air_ir_degree"
 path = "../../tests/air_ir_degree.rs"
+
+[[test]]
+name = "validation_commitments"
+path = "../../tests/validation_commitments.rs"
