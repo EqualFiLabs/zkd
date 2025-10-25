@@ -148,9 +148,11 @@ impl<'de> Deserialize<'de> for AirCommitments {
 fn build_commitments(raw: CommitmentsRaw) -> Result<AirCommitments, String> {
     match raw {
         CommitmentsRaw::Legacy(legacy) => {
-            let mut result = AirCommitments::default();
-            result.pedersen = legacy.pedersen;
-            result.curve = legacy.curve.clone();
+            let mut result = AirCommitments {
+                pedersen: legacy.pedersen,
+                curve: legacy.curve.clone(),
+                ..AirCommitments::default()
+            };
             if legacy.pedersen {
                 result.bindings.push(IrCommitmentBinding {
                     kind: CommitmentKind::Pedersen {
