@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use crate::air::types::{CommitmentBinding as IrCommitmentBinding, CommitmentKind};
+use crate::air::types::{CommitmentBinding as IrCommitmentBinding, CommitmentKind, PublicTy};
 
 /// Hash function enum (narrow for now; we’ll extend later)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -77,10 +77,8 @@ pub struct AirCommitments {
 #[serde(deny_unknown_fields)]
 pub struct AirPublicInput {
     pub name: String,
-    #[serde(default)]
-    pub r#type: Option<String>,
-    #[serde(default)]
-    pub binding: Option<String>,
+    #[serde(default, rename = "type")]
+    pub ty: PublicTy,
 }
 
 #[derive(Debug, Deserialize)]

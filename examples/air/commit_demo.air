@@ -14,15 +14,19 @@ boundary_count = 1
 
 [[public_inputs]]
 name = "x"
+type = "field"
 
 [[public_inputs]]
 name = "y"
+type = "field"
 
 [[public_inputs]]
 name = "acc"
+type = "bytes"
 
 [[public_inputs]]
 name = "digest"
+type = "u64"
 
 [commitments]
 pedersen = { curve = "placeholder", public = ["x", "y"] }

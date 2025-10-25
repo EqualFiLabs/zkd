@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::path::PathBuf;
 
-use zkprov_corelib::air::types::{CommitmentBinding, CommitmentKind};
+use zkprov_corelib::air::types::{CommitmentBinding, CommitmentKind, PublicInput, PublicTy};
 use zkprov_corelib::air::{parse_air_file, parse_air_str};
 
 fn base_air() -> String {
@@ -22,15 +22,19 @@ boundary_count = 1
 
 [[public_inputs]]
 name = "x"
+type = "field"
 
 [[public_inputs]]
 name = "y"
+type = "field"
 
 [[public_inputs]]
 name = "acc"
+type = "bytes"
 
 [[public_inputs]]
 name = "digest"
+type = "u64"
 "#
     .to_string()
 }
@@ -54,6 +58,27 @@ fn expected_bindings() -> Vec<CommitmentBinding> {
         CommitmentBinding {
             kind: CommitmentKind::KeccakCommit,
             public_inputs: vec!["digest".to_string()],
+        },
+    ]
+}
+
+fn expected_public_inputs() -> Vec<PublicInput> {
+    vec![
+        PublicInput {
+            name: "x".to_string(),
+            ty: PublicTy::Field,
+        },
+        PublicInput {
+            name: "y".to_string(),
+            ty: PublicTy::Field,
+        },
+        PublicInput {
+            name: "acc".to_string(),
+            ty: PublicTy::Bytes,
+        },
+        PublicInput {
+            name: "digest".to_string(),
+            ty: PublicTy::U64,
         },
     ]
 }
@@ -96,7 +121,7 @@ fn parse_commitments_table_section() {
     sort_bindings(&mut actual);
     sort_bindings(&mut expected);
     assert_eq!(actual, expected);
-    assert_eq!(ir.public_inputs.len(), 4);
+    assert_eq!(ir.public_inputs, expected_public_inputs());
 }
 
 #[test]
@@ -109,7 +134,7 @@ fn parse_commitments_from_file() {
     sort_bindings(&mut actual);
     sort_bindings(&mut expected);
     assert_eq!(actual, expected);
-    assert_eq!(ir.public_inputs.len(), 4);
+    assert_eq!(ir.public_inputs, expected_public_inputs());
 }
 
 #[test]
@@ -206,5 +231,19 @@ fn duplicate_binding_within_entry_errors() {
     assert_eq!(
         err.to_string(),
         "CommitmentBindingDuplicate(\"pedersen\",\"x\")"
+    );
+}
+
+#[test]
+fn invalid_public_input_type_errors() {
+    let mut src = base_air();
+    src = src.replacen("type = \"field\"", "type = \"unknown\"", 1);
+    let err = parse_air_str(&src).expect_err("invalid public input type error");
+    assert!(
+        err
+            .chain()
+            .any(|cause| cause.to_string().contains("unknown variant")),
+        "unexpected error: {}",
+        err
     );
 }

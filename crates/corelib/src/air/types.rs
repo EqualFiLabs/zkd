@@ -3,6 +3,20 @@ use serde::{Deserialize, Serialize};
 use super::{AirColumns, AirConstraints, AirMeta, AirProgram};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicTy {
+    Field,
+    Bytes,
+    U64,
+}
+
+impl Default for PublicTy {
+    fn default() -> Self {
+        Self::Field
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct AirIr {
     pub meta: AirMeta,
@@ -32,14 +46,12 @@ pub struct CommitmentBinding {
     pub public_inputs: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PublicInput {
     pub name: String,
-    #[serde(default)]
-    pub r#type: Option<String>,
-    #[serde(default)]
-    pub binding: Option<String>,
+    #[serde(rename = "type")]
+    pub ty: PublicTy,
 }
 
 impl From<AirProgram> for AirIr {
@@ -59,8 +71,7 @@ impl From<AirProgram> for AirIr {
             .into_iter()
             .map(|pi| PublicInput {
                 name: pi.name,
-                r#type: pi.r#type,
-                binding: pi.binding,
+                ty: pi.ty,
             })
             .collect();
 
