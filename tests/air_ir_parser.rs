@@ -102,8 +102,8 @@ fn expected_public_inputs() -> Vec<PublicInput> {
 #[derive(Eq, PartialEq, Ord, PartialOrd)]
 struct BindingKey(String, String, Vec<String>);
 
-fn sort_bindings(bindings: &mut Vec<CommitmentBinding>) {
-    bindings.sort_by(|a, b| binding_key(a).cmp(&binding_key(b)));
+fn sort_bindings(bindings: &mut [CommitmentBinding]) {
+    bindings.sort_by_key(binding_key);
 }
 
 fn binding_key(binding: &CommitmentBinding) -> BindingKey {
