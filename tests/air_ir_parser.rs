@@ -4,6 +4,22 @@ use std::path::PathBuf;
 use zkprov_corelib::air::types::{CommitmentBinding, CommitmentKind, PublicInput, PublicTy};
 use zkprov_corelib::air::{parse_air_file, parse_air_str};
 
+fn expect_air_error(src: &str, expected: &str) {
+    let err = parse_air_str(src).expect_err("expected AIR parse failure");
+    let actual = err
+        .chain()
+        .last()
+        .map(|cause| cause.to_string())
+        .unwrap_or_else(|| err.to_string());
+    let last_line = actual
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| line.trim())
+        .unwrap_or_else(|| actual.as_str());
+    assert_eq!(last_line, expected, "unexpected error chain: {err:#}");
+}
+
 fn base_air() -> String {
     r#"
 [meta]
@@ -144,8 +160,7 @@ fn pedersen_missing_curve_errors() {
     pedersen = { public = ["x"] }
     "#,
     );
-    let err = parse_air_str(&src).expect_err("missing curve error");
-    assert_eq!(err.to_string(), "CommitmentBindingMissingCurve");
+    expect_air_error(&src, "pedersen commitment requires a curve name");
 }
 
 #[test]
@@ -155,8 +170,7 @@ fn pedersen_whitespace_curve_errors() {
     pedersen = { curve = "   \t", public = ["x"] }
     "#,
     );
-    let err = parse_air_str(&src).expect_err("whitespace curve error");
-    assert_eq!(err.to_string(), "CommitmentBindingMissingCurve");
+    expect_air_error(&src, "pedersen commitment requires a curve name");
 }
 
 #[test]
@@ -166,14 +180,7 @@ fn unexpected_curve_for_poseidon_errors() {
     poseidon_commit = { curve = "foo", public = ["acc"] }
     "#,
     );
-    let err = parse_air_str(&src).expect_err("unexpected curve error");
-    assert!(
-        err.chain().any(|cause| cause
-            .to_string()
-            .contains("CommitmentBindingUnexpectedCurve")),
-        "unexpected error: {}",
-        err
-    );
+    expect_air_error(&src, "poseidon_commit commitment must not set a curve");
 }
 
 #[test]
@@ -183,14 +190,7 @@ fn unexpected_curve_for_keccak_errors() {
     keccak_commit = { curve = "foo", public = ["digest"] }
     "#,
     );
-    let err = parse_air_str(&src).expect_err("unexpected curve error");
-    assert!(
-        err.chain().any(|cause| cause
-            .to_string()
-            .contains("CommitmentBindingUnexpectedCurve")),
-        "unexpected error: {}",
-        err
-    );
+    expect_air_error(&src, "keccak_commit commitment must not set a curve");
 }
 
 #[test]
@@ -200,10 +200,9 @@ fn unknown_public_input_errors() {
     pedersen = { curve = "placeholder", public = ["unknown"] }
     "#,
     );
-    let err = parse_air_str(&src).expect_err("unknown public input error");
-    assert_eq!(
-        err.to_string(),
-        "CommitmentBindingUnknownPublicInput(\"unknown\")"
+    expect_air_error(
+        &src,
+        "unknown public input 'unknown' referenced by pedersen",
     );
 }
 
@@ -213,11 +212,7 @@ fn duplicate_binding_errors() {
         "{base}\n[[commitments]]\nkind = \"PoseidonCommit\"\npublic = [\"acc\"]\n\n[[commitments]]\nkind = \"PoseidonCommit\"\npublic = [\"acc\"]\n",
         base = base_air()
     );
-    let err = parse_air_str(&src).expect_err("duplicate binding error");
-    assert_eq!(
-        err.to_string(),
-        "CommitmentBindingDuplicate(\"poseidon_commit\",\"acc\")"
-    );
+    expect_air_error(&src, "public input 'acc' already bound to poseidon_commit");
 }
 
 #[test]
@@ -227,23 +222,73 @@ fn duplicate_binding_within_entry_errors() {
     pedersen = { curve = "placeholder", public = ["x", "x"] }
     "#,
     );
-    let err = parse_air_str(&src).expect_err("duplicate binding within entry error");
-    assert_eq!(
-        err.to_string(),
-        "CommitmentBindingDuplicate(\"pedersen\",\"x\")"
-    );
+    expect_air_error(&src, "public input 'x' already bound to pedersen");
 }
 
 #[test]
 fn invalid_public_input_type_errors() {
     let mut src = base_air();
     src = src.replacen("type = \"field\"", "type = \"unknown\"", 1);
-    let err = parse_air_str(&src).expect_err("invalid public input type error");
-    assert!(
-        err
-            .chain()
-            .any(|cause| cause.to_string().contains("unknown variant")),
-        "unexpected error: {}",
-        err
+    expect_air_error(&src, "unknown public input type 'unknown'");
+}
+
+#[test]
+fn invalid_meta_name_errors() {
+    let mut src = base_air();
+    src = src.replacen("name = \"demo\"", "name = \"bad name\"", 1);
+    expect_air_error(&src, "invalid meta.name 'bad name'");
+}
+
+#[test]
+fn empty_meta_field_errors() {
+    let mut src = base_air();
+    src = src.replacen("field = \"Prime254\"", "field = \"   \"", 1);
+    expect_air_error(&src, "meta.field cannot be empty");
+}
+
+#[test]
+fn zero_trace_columns_errors() {
+    let mut src = base_air();
+    src = src.replacen("trace_cols = 4", "trace_cols = 0", 1);
+    expect_air_error(&src, "columns.trace_cols must be > 0");
+}
+
+#[test]
+fn too_many_trace_columns_errors() {
+    let mut src = base_air();
+    src = src.replacen("trace_cols = 4", "trace_cols = 2049", 1);
+    expect_air_error(
+        &src,
+        "columns.trace_cols too large (>2048) for default limits",
     );
+}
+
+#[test]
+fn zero_transition_count_errors() {
+    let mut src = base_air();
+    src = src.replacen("transition_count = 1", "transition_count = 0", 1);
+    expect_air_error(&src, "constraints.transition_count must be > 0");
+}
+
+#[test]
+fn degree_hint_out_of_range_errors() {
+    let mut src = base_air();
+    src = src.replacen(
+        "field = \"Prime254\"",
+        "field = \"Prime254\"\ndegree_hint = 0",
+        1,
+    );
+    expect_air_error(&src, "degree_hint out of range (1..=64)");
+}
+
+#[test]
+fn rows_hint_out_of_range_errors() {
+    let src = format!("rows_hint = 4\n{}", base_air());
+    expect_air_error(&src, "rows_hint out of range [2^3 .. 2^22]");
+}
+
+#[test]
+fn rows_hint_not_power_of_two_errors() {
+    let src = format!("rows_hint = 24\n{}", base_air());
+    expect_air_error(&src, "rows_hint must be a power of two");
 }

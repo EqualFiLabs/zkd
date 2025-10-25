@@ -237,7 +237,7 @@ fn build_table_binding(name: &str, entry: CommitmentInline) -> Result<IrCommitme
         }
         "poseidon_commit" => {
             if entry.curve.is_some() {
-                return Err("CommitmentBindingUnexpectedCurve".to_string());
+                return Err("poseidon_commit commitment must not set a curve".to_string());
             }
             Ok(IrCommitmentBinding {
                 kind: CommitmentKind::PoseidonCommit,
@@ -246,7 +246,7 @@ fn build_table_binding(name: &str, entry: CommitmentInline) -> Result<IrCommitme
         }
         "keccak_commit" => {
             if entry.curve.is_some() {
-                return Err("CommitmentBindingUnexpectedCurve".to_string());
+                return Err("keccak_commit commitment must not set a curve".to_string());
             }
             Ok(IrCommitmentBinding {
                 kind: CommitmentKind::KeccakCommit,
@@ -269,7 +269,7 @@ fn build_list_binding(entry: &CommitmentListEntry) -> Result<IrCommitmentBinding
         }),
         "poseidoncommit" => {
             if entry.curve.is_some() {
-                return Err("CommitmentBindingUnexpectedCurve".to_string());
+                return Err("poseidon_commit commitment must not set a curve".to_string());
             }
             Ok(IrCommitmentBinding {
                 kind: CommitmentKind::PoseidonCommit,
@@ -278,7 +278,7 @@ fn build_list_binding(entry: &CommitmentListEntry) -> Result<IrCommitmentBinding
         }
         "keccakcommit" => {
             if entry.curve.is_some() {
-                return Err("CommitmentBindingUnexpectedCurve".to_string());
+                return Err("keccak_commit commitment must not set a curve".to_string());
             }
             Ok(IrCommitmentBinding {
                 kind: CommitmentKind::KeccakCommit,

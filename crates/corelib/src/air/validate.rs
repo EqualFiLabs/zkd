@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{bail, ensure, Result};
 
 use super::types::{AirIr, CommitmentKind};
 
@@ -13,24 +13,28 @@ pub fn validate_bindings(ir: &AirIr) -> Result<()> {
         let label = CommitmentKindLabel::from(&binding.kind);
         match &binding.kind {
             CommitmentKind::Pedersen { curve } => {
-                ensure!(!curve.trim().is_empty(), "CommitmentBindingMissingCurve");
+                ensure!(
+                    !curve.trim().is_empty(),
+                    "pedersen commitment requires a curve name"
+                );
             }
             CommitmentKind::PoseidonCommit | CommitmentKind::KeccakCommit => {}
         }
 
         for name in &binding.public_inputs {
             if !declared.contains(name.as_str()) {
-                return Err(anyhow!(format!(
-                    "CommitmentBindingUnknownPublicInput(\"{}\")",
-                    name
-                )));
+                bail!(
+                    "unknown public input '{}' referenced by {}",
+                    name,
+                    label.as_str()
+                );
             }
             if !seen.insert((label, name.clone())) {
-                return Err(anyhow!(format!(
-                    "CommitmentBindingDuplicate(\"{}\",\"{}\")",
-                    label.as_str(),
-                    name
-                )));
+                bail!(
+                    "public input '{}' already bound to {}",
+                    name,
+                    label.as_str()
+                );
             }
         }
     }

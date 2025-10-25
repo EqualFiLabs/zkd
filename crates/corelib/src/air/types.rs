@@ -2,12 +2,29 @@ use serde::{Deserialize, Serialize};
 
 use super::{AirColumns, AirConstraints, AirMeta, AirProgram};
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum PublicTy {
     Field,
     Bytes,
     U64,
+}
+
+impl<'de> serde::Deserialize<'de> for PublicTy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        match value.as_str() {
+            "field" => Ok(Self::Field),
+            "bytes" => Ok(Self::Bytes),
+            "u64" => Ok(Self::U64),
+            other => Err(serde::de::Error::custom(format!(
+                "unknown public input type '{other}'"
+            ))),
+        }
+    }
 }
 
 impl Default for PublicTy {
