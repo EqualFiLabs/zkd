@@ -152,6 +152,23 @@ fn unexpected_curve_for_poseidon_errors() {
 }
 
 #[test]
+fn unexpected_curve_for_keccak_errors() {
+    let src = air_with_commitments(
+        r#"[commitments]
+    keccak_commit = { curve = "foo", public = ["digest"] }
+    "#,
+    );
+    let err = parse_air_str(&src).expect_err("unexpected curve error");
+    assert!(
+        err.chain().any(|cause| cause
+            .to_string()
+            .contains("CommitmentBindingUnexpectedCurve")),
+        "unexpected error: {}",
+        err
+    );
+}
+
+#[test]
 fn unknown_public_input_errors() {
     let src = air_with_commitments(
         r#"[commitments]
