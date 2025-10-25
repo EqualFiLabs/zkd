@@ -124,6 +124,17 @@ fn pedersen_missing_curve_errors() {
 }
 
 #[test]
+fn pedersen_whitespace_curve_errors() {
+    let src = air_with_commitments(
+        r#"[commitments]
+    pedersen = { curve = "   \t", public = ["x"] }
+    "#,
+    );
+    let err = parse_air_str(&src).expect_err("whitespace curve error");
+    assert_eq!(err.to_string(), "CommitmentBindingMissingCurve");
+}
+
+#[test]
 fn unexpected_curve_for_poseidon_errors() {
     let src = air_with_commitments(
         r#"[commitments]
@@ -164,5 +175,19 @@ fn duplicate_binding_errors() {
     assert_eq!(
         err.to_string(),
         "CommitmentBindingDuplicate(\"poseidon_commit\",\"acc\")"
+    );
+}
+
+#[test]
+fn duplicate_binding_within_entry_errors() {
+    let src = air_with_commitments(
+        r#"[commitments]
+    pedersen = { curve = "placeholder", public = ["x", "x"] }
+    "#,
+    );
+    let err = parse_air_str(&src).expect_err("duplicate binding within entry error");
+    assert_eq!(
+        err.to_string(),
+        "CommitmentBindingDuplicate(\"pedersen\",\"x\")"
     );
 }
