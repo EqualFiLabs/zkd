@@ -1,0 +1,30 @@
+[meta]
+name = "commit_demo"
+field = "Prime254"
+hash = "poseidon2"
+
+[columns]
+trace_cols = 4
+const_cols = 0
+periodic_cols = 0
+
+[constraints]
+transition_count = 1
+boundary_count = 1
+
+[[public_inputs]]
+name = "x"
+
+[[public_inputs]]
+name = "y"
+
+[[public_inputs]]
+name = "acc"
+
+[[public_inputs]]
+name = "digest"
+
+[commitments]
+pedersen = { curve = "placeholder", public = ["x", "y"] }
+poseidon_commit = { public = ["acc"] }
+keccak_commit = { public = ["digest"] }

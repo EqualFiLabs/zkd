@@ -48,19 +48,21 @@ impl From<AirProgram> for AirIr {
             meta,
             columns,
             constraints,
+            public_inputs,
             commitments,
             ..
         } = program;
 
-        let commitments = match commitments {
-            Some(c) if c.pedersen => vec![CommitmentBinding {
-                kind: CommitmentKind::Pedersen {
-                    curve: c.curve.unwrap_or_default(),
-                },
-                public_inputs: Vec::new(),
-            }],
-            _ => Vec::new(),
-        };
+        let commitments = commitments.map(|c| c.bindings).unwrap_or_default();
+
+        let public_inputs = public_inputs
+            .into_iter()
+            .map(|pi| PublicInput {
+                name: pi.name,
+                r#type: pi.r#type,
+                binding: pi.binding,
+            })
+            .collect();
 
         let degree_hint = meta.degree_hint;
 
@@ -70,7 +72,7 @@ impl From<AirProgram> for AirIr {
             constraints,
             degree_hint,
             commitments,
-            public_inputs: Vec::new(),
+            public_inputs,
         }
     }
 }
