@@ -1,13 +1,23 @@
 //! AIR-IR: minimal, backend-neutral representation + TOML/YAML parser.
 
 pub mod bindings;
+pub mod parser;
 mod parser_yaml;
+pub mod types;
+pub mod validate;
+
+pub use parser::{parse_air_file, parse_air_str};
+pub use types::{AirIr, CommitmentBinding};
 
 use anyhow::{anyhow, Context, Result};
 use regex::Regex;
+use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
+
+use crate::air::types::{CommitmentBinding as IrCommitmentBinding, CommitmentKind, PublicTy};
 
 /// Hash function enum (narrow for now; we’ll extend later)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -52,15 +62,238 @@ pub struct AirConstraints {
 }
 
 /// Optional commitments requirements (Phase-0 validation surface)
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
 pub struct AirCommitments {
     /// If true, program requires Pedersen (or compatible) commitment gadgets.
-    #[serde(default)]
     pub pedersen: bool,
     /// Optional curve name hint (e.g., "placeholder", "bn254")
-    #[serde(default)]
     pub curve: Option<String>,
+    /// Parsed commitment bindings requested by the AIR.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bindings: Vec<IrCommitmentBinding>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct AirPublicInput {
+    pub name: String,
+    #[serde(default, rename = "type")]
+    pub ty: PublicTy,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyCommitments {
+    #[serde(default)]
+    pedersen: bool,
+    #[serde(default)]
+    curve: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommitmentTable {
+    #[serde(flatten)]
+    entries: BTreeMap<String, CommitmentInline>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CommitmentInline {
+    #[serde(default)]
+    curve: Option<String>,
+    #[serde(default, rename = "public")]
+    public_inputs: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CommitmentListEntry {
+    kind: String,
+    #[serde(default)]
+    curve: Option<String>,
+    #[serde(default, rename = "public")]
+    public_inputs: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CommitmentsWithBindings {
+    #[serde(default)]
+    pedersen: bool,
+    #[serde(default)]
+    curve: Option<String>,
+    #[serde(default)]
+    bindings: Vec<IrCommitmentBinding>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum CommitmentsRaw {
+    Legacy(LegacyCommitments),
+    Table(CommitmentTable),
+    List(Vec<CommitmentListEntry>),
+    Full(CommitmentsWithBindings),
+}
+
+impl<'de> Deserialize<'de> for AirCommitments {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = CommitmentsRaw::deserialize(deserializer)?;
+        build_commitments(raw).map_err(de::Error::custom)
+    }
+}
+
+fn build_commitments(raw: CommitmentsRaw) -> Result<AirCommitments, String> {
+    match raw {
+        CommitmentsRaw::Legacy(legacy) => {
+            let mut result = AirCommitments {
+                pedersen: legacy.pedersen,
+                curve: legacy.curve.clone(),
+                ..AirCommitments::default()
+            };
+            if legacy.pedersen {
+                result.bindings.push(IrCommitmentBinding {
+                    kind: CommitmentKind::Pedersen {
+                        curve: legacy.curve.unwrap_or_default(),
+                    },
+                    public_inputs: Vec::new(),
+                });
+            }
+            Ok(result)
+        }
+        CommitmentsRaw::Table(table) => {
+            let mut result = AirCommitments::default();
+            for (name, entry) in table.entries {
+                let binding = build_table_binding(&name, entry)?;
+                if matches!(binding.kind, CommitmentKind::Pedersen { .. }) {
+                    result.pedersen = true;
+                    if result.curve.is_none() {
+                        if let CommitmentKind::Pedersen { curve } = &binding.kind {
+                            if !curve.is_empty() {
+                                result.curve = Some(curve.clone());
+                            }
+                        }
+                    }
+                }
+                result.bindings.push(binding);
+            }
+            Ok(result)
+        }
+        CommitmentsRaw::List(list) => {
+            let mut result = AirCommitments::default();
+            for entry in list {
+                let binding = build_list_binding(&entry)?;
+                if matches!(binding.kind, CommitmentKind::Pedersen { .. }) {
+                    result.pedersen = true;
+                    if result.curve.is_none() {
+                        if let CommitmentKind::Pedersen { curve } = &binding.kind {
+                            if !curve.is_empty() {
+                                result.curve = Some(curve.clone());
+                            }
+                        }
+                    }
+                }
+                result.bindings.push(binding);
+            }
+            Ok(result)
+        }
+        CommitmentsRaw::Full(full) => {
+            let mut result = AirCommitments {
+                pedersen: full.pedersen,
+                curve: full.curve,
+                bindings: full.bindings,
+            };
+            if result.pedersen && result.curve.is_none() {
+                if let Some(curve) =
+                    result
+                        .bindings
+                        .iter()
+                        .find_map(|binding| match &binding.kind {
+                            CommitmentKind::Pedersen { curve } if !curve.is_empty() => {
+                                Some(curve.clone())
+                            }
+                            _ => None,
+                        })
+                {
+                    result.curve = Some(curve);
+                }
+            }
+            Ok(result)
+        }
+    }
+}
+
+fn build_table_binding(name: &str, entry: CommitmentInline) -> Result<IrCommitmentBinding, String> {
+    let public_inputs = entry.public_inputs;
+    match name {
+        "pedersen" => {
+            let curve = entry.curve.unwrap_or_default();
+            Ok(IrCommitmentBinding {
+                kind: CommitmentKind::Pedersen { curve },
+                public_inputs,
+            })
+        }
+        "poseidon_commit" => {
+            if entry.curve.is_some() {
+                return Err("poseidon_commit commitment must not set a curve".to_string());
+            }
+            Ok(IrCommitmentBinding {
+                kind: CommitmentKind::PoseidonCommit,
+                public_inputs,
+            })
+        }
+        "keccak_commit" => {
+            if entry.curve.is_some() {
+                return Err("keccak_commit commitment must not set a curve".to_string());
+            }
+            Ok(IrCommitmentBinding {
+                kind: CommitmentKind::KeccakCommit,
+                public_inputs,
+            })
+        }
+        other => Err(format!("unknown commitment kind '{}'", other)),
+    }
+}
+
+fn build_list_binding(entry: &CommitmentListEntry) -> Result<IrCommitmentBinding, String> {
+    let kind_key = normalize_kind(&entry.kind);
+    let public_inputs = entry.public_inputs.clone();
+    match kind_key.as_str() {
+        "pedersen" => Ok(IrCommitmentBinding {
+            kind: CommitmentKind::Pedersen {
+                curve: entry.curve.clone().unwrap_or_default(),
+            },
+            public_inputs,
+        }),
+        "poseidoncommit" => {
+            if entry.curve.is_some() {
+                return Err("poseidon_commit commitment must not set a curve".to_string());
+            }
+            Ok(IrCommitmentBinding {
+                kind: CommitmentKind::PoseidonCommit,
+                public_inputs,
+            })
+        }
+        "keccakcommit" => {
+            if entry.curve.is_some() {
+                return Err("keccak_commit commitment must not set a curve".to_string());
+            }
+            Ok(IrCommitmentBinding {
+                kind: CommitmentKind::KeccakCommit,
+                public_inputs,
+            })
+        }
+        other => Err(format!("unknown commitment kind '{}'", other)),
+    }
+}
+
+fn normalize_kind(kind: &str) -> String {
+    kind.chars()
+        .filter(|c| *c != '_')
+        .flat_map(|c| c.to_lowercase())
+        .collect()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -72,6 +305,9 @@ pub struct AirProgram {
     /// Optional hint for expected row count (power of two). Used to derive TraceShape.
     #[serde(default)]
     pub rows_hint: Option<u32>,
+    /// Declared public inputs available for bindings.
+    #[serde(default)]
+    pub public_inputs: Vec<AirPublicInput>,
     /// Optional commitments requirements (pedersen/curve hints)
     #[serde(default)]
     pub commitments: Option<AirCommitments>,
@@ -137,13 +373,6 @@ impl AirProgram {
             }
             if r.count_ones() != 1 {
                 return Err(anyhow!("rows_hint must be a power of two"));
-            }
-        }
-        if let Some(c) = &self.commitments {
-            if let Some(curve) = &c.curve {
-                if curve.trim().is_empty() {
-                    return Err(anyhow!("commitments.curve cannot be empty when present"));
-                }
             }
         }
         Ok(())

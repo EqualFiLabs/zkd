@@ -136,6 +136,7 @@ pub fn list_profiles() -> Vec<ProfileInfo>;
 > **Embedding note:** Higher-level bindings in other languages wrap these SDK concepts via the C ABI outlined in §3.
 
 > **YAML import:** `AirProgram::load_from_file("balance.yml")` accepts both `.air` and `.yaml` sources, compiling YAML deterministically into AIR-IR before proving.
+> See the [commitment-aware AIR parser](../crates/corelib/src/air/parser.rs) for DSL examples that map directly onto the `AirIr` structs.
 
 ### 2.3 Error Contracts
 
