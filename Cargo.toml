@@ -2,6 +2,7 @@
 members = [
   "crates/corelib",
   "crates/backends/native",
+  "crates/backends/winterfell",
   "crates/ffi-c",
   "crates/cli",
   "crates/bundles"
@@ -27,6 +28,6 @@ clap = { version = "4.5.13", features = ["derive"] }
 once_cell = "1.19.0"
 serde = { version = "1.0.209", features = ["derive"] }
 serde_json = "1.0.127"
-thiserror = "1.0.63"
+thiserror = "2.0.17"
 libc = "0.2.155"
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }

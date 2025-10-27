@@ -34,7 +34,7 @@ pub fn encode_meta(header: &ProofHeader) -> Vec<u8> {
 }
 
 pub fn decode_meta(data: &[u8]) -> Result<ProofHeader> {
-    let meta = <EvmProofMeta as SolType>::abi_decode(data, true)?;
+    let meta = <EvmProofMeta as SolType>::abi_decode(data)?;
     Ok(ProofHeader {
         backend_id_hash: meta.backendId,
         profile_id_hash: meta.profileId,
@@ -48,7 +48,7 @@ pub fn encode_body(body: &[u8]) -> Vec<u8> {
 }
 
 pub fn decode_body(data: &[u8]) -> Result<Vec<u8>> {
-    <Vec<u8> as SolValue>::abi_decode(data, true).map_err(|e| anyhow!(e))
+    <Vec<u8> as SolValue>::abi_decode(data).map_err(|e| anyhow!(e))
 }
 
 pub fn encode_public_io(json: &str) -> Vec<u8> {
@@ -59,6 +59,6 @@ pub fn encode_public_io(json: &str) -> Vec<u8> {
 }
 
 pub fn decode_public_io(data: &[u8]) -> Result<String> {
-    let decoded = <EvmPublicIO as SolType>::abi_decode(data, true)?;
+    let decoded = <EvmPublicIO as SolType>::abi_decode(data)?;
     String::from_utf8(decoded.data.to_vec()).map_err(|e| anyhow!(e))
 }

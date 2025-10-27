@@ -1,4 +1,4 @@
-# ZKD — General-Purpose STARK Prover
+# ZKD - General-Purpose STARK Prover
 
 ZKD is a deterministic, backend-agnostic STARK proving engine that ships with a CLI, a stable C ABI, and maintained language bindings. It targets developers who need portable proofs across devices and stacks, with clear validation, golden vectors, and an emphasis on honest determinism at the proof layer rather than brittle binary reproducibility. The workspace contains the core library, adapters, crypto bundles, docs, tests, examples, and multi-language FFI bindings. 
 
@@ -268,11 +268,11 @@ See the test plan and interfaces docs for expected outputs and error contracts.
 
 ## License
 
-MIT © EqualFi Labs. ([GitHub][1])
+MIT © EqualFi Labs.
 
 ---
 
 ### Notes
 
-* This README reflects the repo’s current scaffold and commands, including the EVM digest encoding and example Foundry flow shown on the GitHub page. ([GitHub][1])
+* This README reflects the repo’s current scaffold and commands, including the EVM digest encoding and example Foundry flow shown on the GitHub page.
 * Section details map directly to the architecture, interfaces, profiles, recursion, testing, and threat model documents in `docs/`.      
