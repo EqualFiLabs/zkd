@@ -1,8 +1,8 @@
 # ZKD - General-Purpose STARK Prover
 
-ZKD is a deterministic, backend-agnostic STARK proving engine that ships with a CLI, a stable C ABI, and maintained language bindings. It targets developers who need portable proofs across devices and stacks, with clear validation, golden vectors, and an emphasis on honest determinism at the proof layer rather than brittle binary reproducibility. The workspace contains the core library, adapters, crypto bundles, docs, tests, examples, and multi-language FFI bindings. 
+ZKD is a deterministic, backend-agnostic STARK proving engine that ships with a CLI, a stable C ABI, and maintained language bindings. It targets developers who need portable proofs across devices and stacks, with clear validation, golden vectors, and an emphasis on honest determinism at the proof layer rather than brittle binary reproducibility. The workspace contains the core library, adapters, crypto bundles, docs, tests, examples, and multi-language FFI bindings.
 
-> Mantra: same input, same output, any backend. 
+> Mantra: same input, same output, any backend.
 
 ---
 
@@ -75,7 +75,7 @@ Adapters advertise a capability matrix, including fields, hashes, FRI arities, r
 
 ## Determinism Policy
 
-ZKD guarantees proof-level determinism. Verify determinism by rebuilding from source and comparing proof digests against the golden vectors in `tests/golden_vectors`. Prebuilt binaries are convenience only. ([GitHub][1]) 
+ZKD guarantees proof-level determinism. Verify determinism by rebuilding from source and comparing proof digests against the golden vectors in `tests/golden_vectors`. Prebuilt binaries are convenience only. 
 
 ---
 
@@ -117,8 +117,6 @@ export TARGET=aarch64-linux-android
 cargo build -p zkprov-ffi-c --release --target $TARGET
 ls target/$TARGET/release/libzkprov.so
 ```
-
-Reference scaffold and commands are present in the repo README. ([GitHub][1])
 
 ---
 
@@ -205,8 +203,7 @@ ZKD emits a Solidity-ready digest `D` that a simple verifier stub can check on c
 (uint64 backendIdHash, uint64 profileIdHash, uint64 pubioHash, uint64 bodyLen, bytes body)
 ```
 
-and then Keccak256. There is a Foundry stub and parity harness in the repo. ([GitHub][1])  
-
+and then Keccak256. There is a Foundry stub and parity harness in the repo. 
 To reproduce locally:
 
 ```bash
@@ -214,13 +211,11 @@ cargo test --test evm_interop
 (cd examples/evm_verifier && forge test -vv)
 ```
 
-These exact commands are shown in the repo README. ([GitHub][1])
-
 ---
 
 ## Recursion (Aggregations)
 
-ZKD defines a backend-neutral Recursion IR so outer proofs can verify multiple inner proofs and reduce them to a single digest. Modes include stark-in-stark with Plonky adapters and an optional SNARK wrapper later. Mobile profiles cap rows and the number of inner proofs to avoid OOM.   
+ZKD defines a backend-neutral Recursion IR so outer proofs can verify multiple inner proofs and reduce them to a single digest. Modes include stark-in-stark with Plonky adapters and an optional SNARK wrapper later. Mobile profiles cap rows and the number of inner proofs to avoid OOM.
 
 ---
 
@@ -269,10 +264,3 @@ See the test plan and interfaces docs for expected outputs and error contracts.
 ## License
 
 MIT © EqualFi Labs.
-
----
-
-### Notes
-
-* This README reflects the repo’s current scaffold and commands, including the EVM digest encoding and example Foundry flow shown on the GitHub page.
-* Section details map directly to the architecture, interfaces, profiles, recursion, testing, and threat model documents in `docs/`.      
