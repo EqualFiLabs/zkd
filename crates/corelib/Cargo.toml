@@ -12,15 +12,16 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = "0.9.34"
 thiserror = { workspace = true }
-toml = "0.8.19"
+toml = "0.9.8"
 regex = "1.10.6"
 tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak"] }
 num-bigint = "0.4.6"
 num-traits = "0.2.19"
-alloy-sol-types = "0.7"
+alloy-sol-types = "1.4.1"
 
 [dev-dependencies]
 zkprov-backend-native = { path = "../backends/native" }
+tempfile = "3.10.1"
 
 [[test]]
 name = "air_ir_parser"
@@ -29,3 +30,7 @@ path = "../../tests/air_ir_parser.rs"
 [[test]]
 name = "air_ir_degree"
 path = "../../tests/air_ir_degree.rs"
+
+[[test]]
+name = "validation_commitments"
+path = "../../tests/validation_commitments.rs"

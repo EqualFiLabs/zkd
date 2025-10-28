@@ -7,6 +7,7 @@ use std::process;
 use zkprov_backend_native::{native_prove, native_verify};
 use zkprov_corelib as core;
 use zkprov_corelib::air::AirProgram;
+use zkprov_corelib::air_bindings::Bindings;
 use zkprov_corelib::config::Config;
 use zkprov_corelib::evm::digest::digest_D;
 use zkprov_corelib::gadgets::commitment::{
@@ -15,7 +16,8 @@ use zkprov_corelib::gadgets::commitment::{
 use zkprov_corelib::proof::ProofHeader;
 use zkprov_corelib::registry;
 use zkprov_corelib::trace::TraceShape;
-use zkprov_corelib::validate::validate_config;
+use zkprov_corelib::validate::{validate_air_against_backend, validate_config};
+use zkprov_corelib::validation::Validator;
 
 const EXIT_CORRUPT_PROOF: i32 = 4;
 
@@ -98,6 +100,23 @@ enum Commands {
         /// Print stats row/col/body_len after success
         #[arg(long = "stats", default_value_t = false)]
         stats: bool,
+        #[command(flatten)]
+        cfg: CommonCfg,
+    },
+    /// Validate: derive commitment checks and emit a structured report
+    Validate {
+        /// Program AIR path (.air TOML)
+        #[arg(short = 'p', long = "program")]
+        program_path: String,
+        /// Inputs JSON path
+        #[arg(short = 'i', long = "inputs")]
+        inputs_path: String,
+        /// Proof file path
+        #[arg(short = 'P', long = "proof")]
+        proof_in: String,
+        /// Output directory for validation reports
+        #[arg(short = 'o', long = "output")]
+        output_dir: String,
         #[command(flatten)]
         cfg: CommonCfg,
     },
@@ -350,6 +369,80 @@ fn main() -> Result<()> {
                 ));
             }
         }
+        Some(Commands::Validate {
+            program_path,
+            inputs_path,
+            proof_in,
+            output_dir,
+            cfg,
+        }) => {
+            registry::ensure_builtins_registered();
+            let config = mk_config(&cfg);
+            validate_config(&config).map_err(|e| anyhow!(e.to_string()))?;
+            let air = AirProgram::load_from_file(&program_path)?;
+            validate_air_against_backend(&air, &config.backend_id)
+                .map_err(|e| anyhow!(e.to_string()))?;
+            let bindings = Bindings::from_air(&air);
+
+            let proof = read_to_bytes(&proof_in)?;
+            if proof.len() < 40 {
+                return Err(anyhow!(
+                    "proof '{}' is too short for header ({} bytes)",
+                    proof_in,
+                    proof.len()
+                ));
+            }
+            let header = ProofHeader::decode(&proof[0..40])
+                .map_err(|e| anyhow!("failed to decode proof header: {e}"))?;
+            let body = &proof[40..];
+            if body.len() as u64 != header.body_len {
+                return Err(anyhow!(
+                    "proof '{}' body length ({}) does not match header body_len {}",
+                    proof_in,
+                    body.len(),
+                    header.body_len
+                ));
+            }
+
+            let inputs_json = read_to_string(&inputs_path)?;
+            let mut validator = Validator::new(&bindings);
+
+            if bindings.commitments.pedersen {
+                let mut msg_bytes = inputs_json.into_bytes();
+                msg_bytes.extend_from_slice(body);
+                let mut blind_bytes = Vec::new();
+                blind_bytes.extend_from_slice(&header.pubio_hash.to_le_bytes());
+                blind_bytes.extend_from_slice(&header.backend_id_hash.to_le_bytes());
+                blind_bytes.extend_from_slice(&header.profile_id_hash.to_le_bytes());
+                validator.check_commit_point(&msg_bytes, &blind_bytes);
+            }
+            validator.check_range_u64(header.body_len, 64);
+
+            let mut report = validator.finalize();
+            report.meta.backend_id = config.backend_id.clone();
+            report.meta.profile_id = config.profile_id.clone();
+            report.meta.hash_id = bindings
+                .hash_id_for_commitments
+                .clone()
+                .unwrap_or_else(|| config.hash.clone());
+            report.meta.curve = bindings.commitments.curve.clone();
+
+            let report_path = report.write_pretty(&output_dir).with_context(|| {
+                format!("failed to write validation report under '{}'", output_dir)
+            })?;
+            println!(
+                "✅ Validation ok={} commit_passed={} report={}",
+                report.ok,
+                report.commit_passed,
+                report_path.display()
+            );
+            if !report.ok {
+                for err in &report.errors {
+                    eprintln!("❌ {:?}: {}", err.code, err.msg);
+                }
+                process::exit(1);
+            }
+        }
         Some(Commands::Commit {
             hash_id,
             msg_hex,
@@ -436,6 +529,9 @@ fn main() -> Result<()> {
             );
             println!(
                 "     `zkd verify -p <program> -i <inputs> -P <proof> --profile ... [--stats]`",
+            );
+            println!(
+                "     `zkd validate -p <program> -i <inputs> -P <proof> -o <reports> --profile ...`",
             );
         }
     }
