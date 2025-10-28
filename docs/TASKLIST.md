@@ -152,28 +152,21 @@
 * **Steps:** provide minimal round‑trip demos (≈20 lines) for each official Phase-0 binding (C, Node, Python, Flutter, WASI); collect common integration issues (missing symbols, architecture mismatch, notarization or code‑signing errors, loader path problems) and document their resolutions; link to cookbook appendices for deferred languages.
 * **DoD:** CI executes each official example after building the corresponding binding; the troubleshooting guide includes a table of known issues and fixes plus references into the cookbook for DIY targets.
 
-### Task 0.9.10 — CI Matrix & Artifact Publishing
+### Task 0.9.10 — CI Matrix & Artifact Publishing (DONE)
 
 * **Objective:** automate cross‑platform builds, tests and publication for all bindings.
 * **Files:** `/.github/workflows/ffi.yml`
 * **Steps:** build core libraries for all target architectures; run language‑specific smoke tests using the examples from Task 0.9.9; upload prebuilt binaries and publish packages to the appropriate ecosystems (npm, PyPI, pub.dev, wasm bundle); ensure failures in official bindings break CI while cookbook targets report status asynchronously.
 * **DoD:** the GitHub Actions matrix shows green across all official bindings; artifacts and packages are attached to releases and/or published to registries, with cookbook status tracked via documentation updates.
 
-### Task 0.9.11 — AIR-IR Parser & Public I/O (commitment aware)
+### Task 0.9.11 — AIR-IR Parser & Public I/O (commitment aware) (DONE)
 
 * **Objective:** parse `.air` including `Pedersen(curve)`, `PoseidonCommit`, and `KeccakCommit` bindings (renumbered from the original Task 0.9.2).
 * **Files:** `/crates/corelib/src/air/{parser.rs,types.rs}`, `/tests/air_ir_{parser,degree}.rs`
 * **Steps:** update the grammar to support the new commitment bindings; implement type and binding checks; ensure that degree accounting remains unchanged.
 * **DoD:** `.air` files using commitment bindings parse and validate correctly.
 
-### Task 0.9.12 — AIR-IR Parser & Public I/O (commitment aware)
-
-* **Objective:** parse `.air` incl. `Pedersen(curve)`, `PoseidonCommit`, `KeccakCommit` bindings.
-* **Files:** `/crates/corelib/src/air/{parser.rs,types.rs}`, `/tests/air_ir_{parser,degree}.rs`
-* **Steps:** grammar updates; type/binding checks; degree accounting unchanged.
-* **DoD:** `.air` files with commitment bindings parse and validate.
-
-### Task 0.10 — Validation & Report System (commitment-aware)
+### Task 0.10 — Validation & Report System (commitment-aware) (DONE)
 
 * **Objective:** structured JSON validation with new errors and `commit_passed` flag.
 * **Files:** `/crates/corelib/src/validation.rs`, `/reports/`, `/tests/validation_commitments.rs`
