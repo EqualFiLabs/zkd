@@ -2,7 +2,7 @@
 
 use anyhow::{ensure, Result};
 use thiserror::Error;
-use zkprov_corelib::air::types::AirIr;
+use zkprov_corelib::air::types::{AirIr, CommitmentKind};
 use zkprov_corelib::air::AirHash;
 use zkprov_corelib::backend::{Capabilities, ProverBackend, VerifierBackend};
 
@@ -69,6 +69,53 @@ pub struct ProveInput<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProofBytes(pub Vec<u8>);
 
+fn ensure_commitment_support(ir: &AirIr) -> std::result::Result<(), BackendUnsupported> {
+    // Winterfell 0.6 only wires a placeholder Pedersen commitment; reject other curves.
+    for curve in ir
+        .commitments
+        .iter()
+        .filter_map(|binding| match &binding.kind {
+            CommitmentKind::Pedersen { curve } => Some(curve.clone()),
+            _ => None,
+        })
+    {
+        let normalized = if curve.trim().is_empty() {
+            "placeholder".to_string()
+        } else {
+            curve.trim().to_ascii_lowercase()
+        };
+
+        if normalized != "placeholder" {
+            return Err(BackendUnsupported::PedersenCurve { curve });
+        }
+    }
+
+    let has_poseidon_commit = ir
+        .commitments
+        .iter()
+        .any(|binding| matches!(binding.kind, CommitmentKind::PoseidonCommit));
+    let has_keccak_commit = ir
+        .commitments
+        .iter()
+        .any(|binding| matches!(binding.kind, CommitmentKind::KeccakCommit));
+
+    if !has_poseidon_commit && !has_keccak_commit {
+        return Ok(());
+    }
+
+    let hash_label = format!("{:?}", ir.meta.hash).to_ascii_lowercase();
+
+    if has_poseidon_commit && hash_label != "poseidon2" {
+        return Err(BackendUnsupported::PoseidonCommitHash { hash: hash_label });
+    }
+
+    if has_keccak_commit && hash_label != "keccak" {
+        return Err(BackendUnsupported::KeccakCommitHash { hash: hash_label });
+    }
+
+    Ok(())
+}
+
 impl WinterfellBackend {
     pub fn prove(input: ProveInput) -> Result<ProofBytes> {
         let program = to_wf(input.ir)?;
@@ -76,9 +123,9 @@ impl WinterfellBackend {
 
         match program.air {
             WfAirKind::Toy(_) => toy::prove(&program, &profile, input.pub_io_json),
-            other => Err(unsupported(format!(
+            other => Err(unsupported(BackendUnsupported::Other(format!(
                 "Winterfell prover does not yet support '{other:?}' programs"
-            ))),
+            )))),
         }
     }
 
@@ -87,9 +134,9 @@ impl WinterfellBackend {
 
         match program.air {
             WfAirKind::Toy(_) => toy::verify(&program, proof),
-            other => Err(unsupported(format!(
+            other => Err(unsupported(BackendUnsupported::Other(format!(
                 "Winterfell verifier does not yet support '{other:?}' programs"
-            ))),
+            )))),
         }
     }
 }
@@ -123,7 +170,7 @@ impl ProverBackend for WinterfellBackend {
 impl VerifierBackend for WinterfellBackend {}
 
 mod toy {
-    use super::{unsupported, Profile, ProofBytes, Result, WfProgram};
+    use super::{unsupported, BackendUnsupported, Profile, ProofBytes, Result, WfProgram};
     use anyhow::{ensure, Context};
     use serde_json::Value;
     use winterfell::{
@@ -152,10 +199,9 @@ mod toy {
         ensure_supported_shape(program)?;
 
         let options = build_options(profile);
-        let trace_length =
-            program
-                .trace_rows
-                .clamp(TraceInfo::MIN_TRACE_LENGTH, MAX_TOY_TRACE_LENGTH);
+        let trace_length = program
+            .trace_rows
+            .clamp(TraceInfo::MIN_TRACE_LENGTH, MAX_TOY_TRACE_LENGTH);
         let periodic = build_periodic_values(trace_length);
         let trace = build_trace(trace_length, &periodic);
 
@@ -238,7 +284,9 @@ mod toy {
     fn ensure_supported_shape(program: &WfProgram) -> Result<()> {
         ensure!(
             program.trace_cols == TOY_TRACE_WIDTH,
-            unsupported("toy prover expects 4 trace columns")
+            unsupported(BackendUnsupported::Other(
+                "toy prover expects 4 trace columns".into()
+            ))
         );
         Ok(())
     }
@@ -405,34 +453,58 @@ pub struct WfProgram {
     pub air: WfAirKind,
 }
 
-#[derive(Debug, Error)]
-#[error("Unsupported({0})")]
-struct UnsupportedError(String);
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum BackendUnsupported {
+    #[error("Unsupported(program '{program}' not yet supported by Winterfell backend)")]
+    Program { program: String },
+    #[error(
+        "Unsupported(Pedersen commitments require curve 'placeholder' but '{curve}' requested)"
+    )]
+    PedersenCurve { curve: String },
+    #[error(
+        "Unsupported(PoseidonCommit requires Winterfell hash 'poseidon2' but '{hash}' requested)"
+    )]
+    PoseidonCommitHash { hash: String },
+    #[error("Unsupported(KeccakCommit requires Winterfell hash 'keccak' but '{hash}' requested)")]
+    KeccakCommitHash { hash: String },
+    #[error("Unsupported({0})")]
+    Other(String),
+}
 
-fn unsupported(msg: impl Into<String>) -> anyhow::Error {
-    UnsupportedError(msg.into()).into()
+fn unsupported(err: BackendUnsupported) -> anyhow::Error {
+    anyhow::Error::new(err)
 }
 
 fn convert_toy(ir: &AirIr) -> Result<WfProgram> {
     ensure!(
         ir.columns.trace_cols == 4,
-        unsupported("toy AIR expects exactly 4 trace columns")
+        unsupported(BackendUnsupported::Other(
+            "toy AIR expects exactly 4 trace columns".into()
+        ))
     );
     ensure!(
         ir.columns.const_cols == 1,
-        unsupported("toy AIR expects exactly 1 constant column")
+        unsupported(BackendUnsupported::Other(
+            "toy AIR expects exactly 1 constant column".into()
+        ))
     );
     ensure!(
         ir.columns.periodic_cols == 1,
-        unsupported("toy AIR expects exactly 1 periodic column")
+        unsupported(BackendUnsupported::Other(
+            "toy AIR expects exactly 1 periodic column".into()
+        ))
     );
     ensure!(
         ir.constraints.transition_count == 3,
-        unsupported("toy AIR expects 3 transition constraints")
+        unsupported(BackendUnsupported::Other(
+            "toy AIR expects 3 transition constraints".into()
+        ))
     );
     ensure!(
         ir.constraints.boundary_count == 2,
-        unsupported("toy AIR expects 2 boundary constraints")
+        unsupported(BackendUnsupported::Other(
+            "toy AIR expects 2 boundary constraints".into()
+        ))
     );
 
     let public_inputs = vec![0; ir.public_inputs.len()];
@@ -452,23 +524,33 @@ fn convert_toy(ir: &AirIr) -> Result<WfProgram> {
 fn convert_merkle(ir: &AirIr) -> Result<WfProgram> {
     ensure!(
         ir.columns.const_cols == 0,
-        unsupported("merkle AIR must not declare constant columns")
+        unsupported(BackendUnsupported::Other(
+            "merkle AIR must not declare constant columns".into()
+        ))
     );
     ensure!(
         ir.columns.periodic_cols == 0,
-        unsupported("merkle AIR must not declare periodic columns")
+        unsupported(BackendUnsupported::Other(
+            "merkle AIR must not declare periodic columns".into()
+        ))
     );
     ensure!(
         ir.columns.trace_cols >= 16,
-        unsupported("merkle AIR expects at least 16 trace columns to absorb root")
+        unsupported(BackendUnsupported::Other(
+            "merkle AIR expects at least 16 trace columns to absorb root".into()
+        ))
     );
     ensure!(
         ir.constraints.transition_count >= 1,
-        unsupported("merkle AIR requires at least one transition constraint")
+        unsupported(BackendUnsupported::Other(
+            "merkle AIR requires at least one transition constraint".into()
+        ))
     );
     ensure!(
         ir.constraints.boundary_count >= 1,
-        unsupported("merkle AIR requires at least one boundary constraint")
+        unsupported(BackendUnsupported::Other(
+            "merkle AIR requires at least one boundary constraint".into()
+        ))
     );
 
     let public_inputs = vec![0; ir.public_inputs.len()];
@@ -486,12 +568,14 @@ fn convert_merkle(ir: &AirIr) -> Result<WfProgram> {
 }
 
 pub fn to_wf(ir: &AirIr) -> Result<WfProgram> {
+    ensure_commitment_support(ir).map_err(unsupported)?;
+
     match ir.meta.name.as_str() {
         name if name.starts_with("toy") => convert_toy(ir),
         name if name.contains("merkle") => convert_merkle(ir),
-        other => Err(unsupported(format!(
-            "program '{other}' not supported by Winterfell backend"
-        ))),
+        other => Err(unsupported(BackendUnsupported::Program {
+            program: other.to_string(),
+        })),
     }
 }
 
@@ -499,6 +583,42 @@ pub fn to_wf(ir: &AirIr) -> Result<WfProgram> {
 mod tests {
     use super::*;
     use zkprov_corelib::air::parser::parse_air_str;
+
+    fn minimal_air(hash: &str) -> String {
+        format!(
+            r#"
+[meta]
+name = "demo"
+field = "Prime254"
+hash = "{hash}"
+
+[columns]
+trace_cols = 4
+const_cols = 0
+periodic_cols = 0
+
+[constraints]
+transition_count = 1
+boundary_count = 1
+
+[[public_inputs]]
+name = "x"
+type = "field"
+
+[[public_inputs]]
+name = "acc"
+type = "bytes"
+
+[[public_inputs]]
+name = "digest"
+type = "u64"
+"#
+        )
+    }
+
+    fn minimal_air_with_section(hash: &str, section: &str) -> String {
+        format!("{}\n{}\n", minimal_air(hash), section)
+    }
 
     #[test]
     fn exposes_capabilities() {
@@ -563,6 +683,72 @@ mod tests {
         let err = to_wf(&ir).expect_err("should reject unsupported program");
         let msg = format!("{err}");
         assert!(msg.contains("Unsupported"));
+    }
+
+    #[test]
+    fn rejects_non_placeholder_pedersen_curve() {
+        let src = minimal_air_with_section(
+            "poseidon2",
+            r#"[commitments]
+pedersen = { curve = "pallas", public = ["x"] }
+"#,
+        );
+        let ir = parse_air_str(&src).expect("parse pedersen AIR");
+
+        let err = to_wf(&ir).expect_err("should reject non-placeholder curve");
+        let cause = err
+            .downcast_ref::<BackendUnsupported>()
+            .expect("pedersen curve unsupported");
+        assert_eq!(
+            cause,
+            &BackendUnsupported::PedersenCurve {
+                curve: "pallas".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_poseidon_commit_when_hash_mismatch() {
+        let src = minimal_air_with_section(
+            "blake3",
+            r#"[commitments]
+poseidon_commit = { public = ["acc"] }
+"#,
+        );
+        let ir = parse_air_str(&src).expect("parse poseidon AIR");
+
+        let err = to_wf(&ir).expect_err("should reject poseidon hash mismatch");
+        let cause = err
+            .downcast_ref::<BackendUnsupported>()
+            .expect("poseidon commit unsupported");
+        assert_eq!(
+            cause,
+            &BackendUnsupported::PoseidonCommitHash {
+                hash: "blake3".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_keccak_commit_when_hash_mismatch() {
+        let src = minimal_air_with_section(
+            "poseidon2",
+            r#"[commitments]
+keccak_commit = { public = ["digest"] }
+"#,
+        );
+        let ir = parse_air_str(&src).expect("parse keccak AIR");
+
+        let err = to_wf(&ir).expect_err("should reject keccak hash mismatch");
+        let cause = err
+            .downcast_ref::<BackendUnsupported>()
+            .expect("keccak commit unsupported");
+        assert_eq!(
+            cause,
+            &BackendUnsupported::KeccakCommitHash {
+                hash: "poseidon2".to_string(),
+            }
+        );
     }
 
     #[test]
