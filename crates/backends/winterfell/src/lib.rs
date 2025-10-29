@@ -1,10 +1,15 @@
 //! Winterfell backend adapter (stub).
 
-use anyhow::{ensure, Result};
+use std::convert::TryFrom;
+
+use anyhow::{anyhow, ensure, Context, Result};
 use thiserror::Error;
 use zkprov_corelib::air::types::{AirIr, CommitmentKind};
 use zkprov_corelib::air::AirHash;
 use zkprov_corelib::backend::{Capabilities, ProverBackend, VerifierBackend};
+use zkprov_corelib::crypto::registry::hash64_by_id;
+use zkprov_corelib::evm::digest::digest_D;
+use zkprov_corelib::proof::{self, ProofHeader};
 
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct WinterfellCapabilities {
@@ -25,7 +30,7 @@ pub struct Profile {
 
 pub fn capabilities() -> WinterfellCapabilities {
     WinterfellCapabilities {
-        name: "winterfell@0.6",
+        name: BACKEND_ID,
         field: "Prime256",
         hashes: vec!["blake3", "poseidon2", "rescue", "keccak"],
         commitments: vec!["Pedersen(placeholder)", "PoseidonCommit", "KeccakCommit"],
@@ -67,7 +72,86 @@ pub struct ProveInput<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProofBytes(pub Vec<u8>);
+pub struct ProofBytes {
+    proof: Vec<u8>,
+    header: ProofHeader,
+    digest_body: Vec<u8>,
+}
+
+impl ProofBytes {
+    pub fn proof_bytes(&self) -> &[u8] {
+        &self.proof
+    }
+
+    pub fn header(&self) -> &ProofHeader {
+        &self.header
+    }
+
+    pub fn determinism_body(&self) -> &[u8] {
+        &self.digest_body
+    }
+
+    pub fn digest(&self) -> [u8; 32] {
+        digest_D(&self.header, &self.digest_body)
+    }
+}
+
+const BACKEND_ID: &str = "winterfell@0.6";
+const DIGEST_BACKEND_ID: &str = "native@0.0";
+
+fn hash_id_from_air(hash: &AirHash) -> &'static str {
+    match hash {
+        AirHash::Poseidon2 => "poseidon2",
+        AirHash::Blake3 => "blake3",
+        AirHash::Rescue => "rescue",
+    }
+}
+
+fn digest_backend_id(ir: &AirIr) -> &str {
+    ir.meta.backend.as_deref().unwrap_or(DIGEST_BACKEND_ID)
+}
+
+fn determinism_header(
+    ir: &AirIr,
+    profile_id: &str,
+    pub_io_json: &str,
+    body_len: usize,
+) -> ProofHeader {
+    let backend_id = digest_backend_id(ir);
+    ProofHeader {
+        backend_id_hash: proof::hash64("BACKEND", backend_id.as_bytes()),
+        profile_id_hash: proof::hash64("PROFILE", profile_id.as_bytes()),
+        pubio_hash: proof::hash64("PUBIO", pub_io_json.as_bytes()),
+        body_len: body_len as u64,
+    }
+}
+
+fn determinism_manifest_body(
+    ir: &AirIr,
+    program: &WfProgram,
+    pub_io_json: &str,
+) -> Result<Vec<u8>> {
+    let hash_id = hash_id_from_air(&ir.meta.hash);
+    let mut accum = 0u64;
+
+    let mut mix = |label: &str, bytes: &[u8]| -> Result<()> {
+        let h = hash64_by_id(hash_id, label, bytes)
+            .ok_or_else(|| anyhow!("unsupported hash id '{hash_id}'"))?;
+        accum ^= h.rotate_left(13) ^ h.wrapping_mul(0x9e3779b97f4a7c15);
+        Ok(())
+    };
+
+    mix("AIR.NAME", ir.meta.name.as_bytes())?;
+    mix("AIR.FIELD", ir.meta.field.as_bytes())?;
+
+    let rows = u32::try_from(program.trace_rows).context("trace rows exceed u32 range")?;
+    let cols = u32::try_from(program.trace_cols).context("trace cols exceed u32 range")?;
+    mix("TRACE.ROWS", &rows.to_le_bytes())?;
+    mix("TRACE.COLS", &cols.to_le_bytes())?;
+    mix("IO.JSON", pub_io_json.as_bytes())?;
+
+    Ok(accum.to_le_bytes().to_vec())
+}
 
 fn ensure_commitment_support(ir: &AirIr) -> std::result::Result<(), BackendUnsupported> {
     // Winterfell 0.6 only wires a placeholder Pedersen commitment; reject other curves.
@@ -121,12 +205,28 @@ impl WinterfellBackend {
         let program = to_wf(input.ir)?;
         let profile = profile_map(input.profile_id);
 
-        match program.air {
-            WfAirKind::Toy(_) => toy::prove(&program, &profile, input.pub_io_json),
-            other => Err(unsupported(BackendUnsupported::Other(format!(
-                "Winterfell prover does not yet support '{other:?}' programs"
-            )))),
-        }
+        let proof_bytes = match program.air {
+            WfAirKind::Toy(_) => toy::prove(&program, &profile, input.pub_io_json)?,
+            other => {
+                return Err(unsupported(BackendUnsupported::Other(format!(
+                    "Winterfell prover does not yet support '{other:?}' programs"
+                ))))
+            }
+        };
+
+        let digest_body = determinism_manifest_body(input.ir, &program, input.pub_io_json)?;
+        let header = determinism_header(
+            input.ir,
+            input.profile_id,
+            input.pub_io_json,
+            digest_body.len(),
+        );
+
+        Ok(ProofBytes {
+            proof: proof_bytes,
+            header,
+            digest_body,
+        })
     }
 
     pub fn verify(ir: &AirIr, proof: &[u8]) -> Result<()> {
@@ -143,7 +243,7 @@ impl WinterfellBackend {
 
 impl ProverBackend for WinterfellBackend {
     fn id(&self) -> &'static str {
-        "winterfell@0.6"
+        BACKEND_ID
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -170,7 +270,7 @@ impl ProverBackend for WinterfellBackend {
 impl VerifierBackend for WinterfellBackend {}
 
 mod toy {
-    use super::{unsupported, BackendUnsupported, Profile, ProofBytes, Result, WfProgram};
+    use super::{unsupported, BackendUnsupported, Profile, Result, WfProgram};
     use anyhow::{ensure, Context};
     use serde_json::Value;
     use winterfell::{
@@ -190,7 +290,7 @@ mod toy {
     const TOY_TRACE_WIDTH: usize = 4;
     const MAX_TOY_TRACE_LENGTH: usize = 1 << 10;
 
-    pub fn prove(program: &WfProgram, profile: &Profile, pub_io_json: &str) -> Result<ProofBytes> {
+    pub fn prove(program: &WfProgram, profile: &Profile, pub_io_json: &str) -> Result<Vec<u8>> {
         if !pub_io_json.trim().is_empty() {
             serde_json::from_str::<Value>(pub_io_json)
                 .context("toy AIR public IO must be valid JSON")?;
@@ -210,7 +310,7 @@ mod toy {
             .prove(trace)
             .map_err(|err| anyhow::Error::new(err).context("winterfell prover failed"))?;
 
-        Ok(ProofBytes(proof.to_bytes()))
+        Ok(proof.to_bytes())
     }
 
     pub fn verify(program: &WfProgram, proof: &[u8]) -> Result<()> {
@@ -582,7 +682,9 @@ pub fn to_wf(ir: &AirIr) -> Result<WfProgram> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zkprov_backend_native::native_prove;
     use zkprov_corelib::air::parser::parse_air_str;
+    use zkprov_corelib::config::Config;
 
     fn minimal_air(hash: &str) -> String {
         format!(
@@ -763,6 +865,59 @@ keccak_commit = { public = ["digest"] }
         })
         .expect("winterfell proof generation");
 
-        WinterfellBackend::verify(&ir, &proof.0).expect("winterfell verification");
+        WinterfellBackend::verify(&ir, proof.proof_bytes()).expect("winterfell verification");
+    }
+
+    fn native_digest_for_air(
+        ir: &AirIr,
+        inputs: &str,
+        air_path: &str,
+        hash: &str,
+        profile: &str,
+    ) -> [u8; 32] {
+        let backend_id = digest_backend_id(ir);
+        let cfg = Config::new(backend_id, "Prime254", hash, 2, false, profile);
+        let proof = native_prove(&cfg, inputs, air_path).expect("native prove");
+        let header = ProofHeader::decode(&proof[0..40]).expect("decode header");
+        let body = &proof[40..];
+        digest_D(&header, body)
+    }
+
+    #[test]
+    fn digest_matches_native_for_toy_demo() {
+        let air_src = include_str!("../../../../examples/air/toy.air");
+        let air_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../examples/air/toy.air");
+        let ir = parse_air_str(air_src).expect("parse toy AIR");
+
+        let proof = WinterfellBackend::prove(ProveInput {
+            ir: &ir,
+            profile_id: "balanced",
+            pub_io_json: "{}",
+        })
+        .expect("winterfell proof generation");
+
+        let wf_digest = proof.digest();
+        let native_digest = native_digest_for_air(&ir, "{}", air_path, "blake3", "balanced");
+
+        assert_eq!(wf_digest, native_digest);
+    }
+
+    #[test]
+    fn digest_matches_native_for_secure_profile() {
+        let air_src = include_str!("../../../../examples/air/toy.air");
+        let air_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../examples/air/toy.air");
+        let ir = parse_air_str(air_src).expect("parse toy AIR");
+
+        let proof = WinterfellBackend::prove(ProveInput {
+            ir: &ir,
+            profile_id: "secure",
+            pub_io_json: "{}",
+        })
+        .expect("winterfell proof generation");
+
+        let wf_digest = proof.digest();
+        let native_digest = native_digest_for_air(&ir, "{}", air_path, "blake3", "secure");
+
+        assert_eq!(wf_digest, native_digest);
     }
 }
